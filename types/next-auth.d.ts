@@ -1,5 +1,5 @@
-import NextAuth, { DefaultSession, DefaultUser } from 'next-auth';
-import { JWT, DefaultJWT } from 'next-auth/jwt';
+import { DefaultSession, DefaultUser } from 'next-auth';
+import { DefaultJWT } from 'next-auth/jwt';
 
 // UserオブジェクトとJWTトークンに含めるカスタムプロパティを定義
 declare module 'next-auth' {
