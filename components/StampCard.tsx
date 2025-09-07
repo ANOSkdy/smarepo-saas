@@ -158,7 +158,7 @@ export default function StampCard({
         <div className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white/80 p-4 backdrop-blur-sm">
             {stampType === 'IN' ? (
                 <button
-                    onClick={() => document.getElementById('check-in-form')?.requestSubmit()}
+                    onClick={() => (document.getElementById('check-in-form') as HTMLFormElement)?.requestSubmit()}
                     disabled={!selectedWork || isLoading}
                     className="w-full rounded-lg bg-primary px-4 py-4 text-xl font-bold text-white shadow-lg hover:bg-primary/90 disabled:bg-gray-400"
                 >
