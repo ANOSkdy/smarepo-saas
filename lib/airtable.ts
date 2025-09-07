@@ -45,3 +45,38 @@ export const getMachineById = async (machineId: string) => {
     throw error;
   }
 };
+// ... (既存の airtable, tables, getMachineById などの定義) ...
+
+// ユーザーのレコードIDとJSTでの今日の日付を元に、当日のログを取得する関数
+export const getTodayLogs = async (userRecordId: string) => {
+  // JSTで今日の日付 (YYYY-MM-DD) を取得
+  const todayJST = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+    .format(new Date())
+    .replace(/\//g, '-');
+
+  try {
+    const records = await logsTable
+      .select({
+        // まず日付で絞り込む
+        filterByFormula: `{date} = '${todayJST}'`,
+        // 時刻順で並び替え
+        sort: [{ field: 'timestamp', direction: 'asc' }],
+      })
+      .all();
+
+    // Airtableのuser(Link to Record)フィールドはレコードIDの配列なので、
+    // 取得したレコードから、さらに対象ユーザーのログのみを絞り込む
+    return records.filter(
+      (record) =>
+        record.fields.user && record.fields.user.includes(userRecordId)
+    );
+  } catch (error) {
+    console.error('Error fetching today logs:', error);
+    throw error;
+  }
+};
