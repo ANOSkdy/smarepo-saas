@@ -7,11 +7,11 @@ import { Record } from 'airtable';
 
 type StampCardProps = {
   initialStampType: 'IN' | 'OUT';
-  // 変更点1: 受け取るプロパティを追加
   initialWorkDescription: string;
   userName: string;
 };
 
+// 完了・エラー・待機時の汎用表示コンポーネント
 const CardState = ({ title, message }: { title: string; message: string }) => (
   <div className="w-full max-w-md rounded-lg bg-white p-8 text-center shadow-md">
     <h2 className="text-xl font-bold">{title}</h2>
@@ -21,33 +21,33 @@ const CardState = ({ title, message }: { title: string; message: string }) => (
 
 export default function StampCard({
   initialStampType,
-  // 変更点2: プロパティを受け取る
   initialWorkDescription,
   userName,
 }: StampCardProps) {
-  const [stampType, setStampType] = useState(initialStampType);
+  // 状態に 'COMPLETED' を追加して完了画面を管理
+  const [stampType, setStampType] = useState<'IN' | 'OUT' | 'COMPLETED'>(initialStampType);
   const [workTypes, setWorkTypes] = useState<Record<WorkTypeFields>[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  // 変更点3: Stateの初期値としてサーバーから渡された作業内容を設定
-  const [lastWorkDescription, setLastWorkDescription] = useState(
-    initialWorkDescription
-  );
+  const [lastWorkDescription, setLastWorkDescription] = useState(initialWorkDescription);
 
   const searchParams = useSearchParams();
   const machineId = searchParams.get('machineid');
 
   useEffect(() => {
-    fetch('/api/masters/work-types')
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error('Failed to fetch work types');
-        }
-        return res.json();
-      })
-      .then((data) => setWorkTypes(data))
-      .catch(() => setError('作業内容マスタの取得に失敗しました。'));
-  }, []);
+    // stampTypeが 'IN' の場合のみ作業内容マスタを取得
+    if (stampType === 'IN') {
+      fetch('/api/masters/work-types')
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error('Failed to fetch work types');
+          }
+          return res.json();
+        })
+        .then((data) => setWorkTypes(data))
+        .catch(() => setError('作業内容マスタの取得に失敗しました。'));
+    }
+  }, [stampType]);
 
   const handleStamp = async (type: 'IN' | 'OUT', workDescription: string) => {
     setIsLoading(true);
@@ -76,13 +76,19 @@ export default function StampCard({
             throw new Error(res.message || `サーバーエラー: ${response.statusText}`);
           }
           
-          setStampType(type === 'IN' ? 'IN' : 'OUT');
+          // ### ロジック修正 ###
+          // 打刻タイプに応じて次の状態に遷移させる
           if (type === 'IN') {
+            setStampType('OUT'); // 出勤成功 → 退勤画面へ
             setLastWorkDescription(workDescription);
+          } else {
+            setStampType('COMPLETED'); // 退勤成功 → 完了画面へ
           }
 
-        } catch (err: any) {
-          setError(err.message || '通信に失敗しました。');
+        } catch (err) {
+          // ### anyを削除 ###
+          const message = err instanceof Error ? err.message : '通信に失敗しました。';
+          setError(message);
         } finally {
           setIsLoading(false);
         }
@@ -115,8 +121,13 @@ export default function StampCard({
   if (isLoading) return <CardState title="処理中..." message="サーバーと通信しています。" />;
   if (error) return <CardState title="エラーが発生しました" message={error} />;
   if (!machineId) return <CardState title="無効なアクセス" message="NFCタグから機械IDを読み取れませんでした。" />;
+  
+  // ### 表示ロジック修正 ###
+  if (stampType === 'COMPLETED') {
+    return <CardState title="記録しました" message="本日の業務お疲れ様でした。" />;
+  }
 
-  if (stampType === 'OUT') {
+  if (stampType === 'IN') {
     return (
       <div className="w-full max-w-md rounded-lg bg-white p-8 text-center shadow-md">
         <h1 className="text-2xl font-bold">出勤</h1>
@@ -153,7 +164,9 @@ export default function StampCard({
         </form>
       </div>
     );
-  } else {
+  } 
+  
+  if (stampType === 'OUT') {
     return (
       <div className="w-full max-w-md rounded-lg bg-white p-8 text-center shadow-md">
         <h1 className="text-2xl font-bold text-green-600">出勤中</h1>

@@ -5,14 +5,16 @@ import {
   logsTable,
   machinesTable,
   sitesTable,
-  usersTable,
+  // ### 修正点: 未使用のため削除 ###
+  // usersTable, 
 } from '@/lib/airtable';
 import { findNearestSite } from '@/lib/geo';
 import { LogFields } from '@/types';
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  // session.user.userId を使用する場合は session.user.id を userId に変更してください
+  if (!session?.user?.id) { 
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
   }
 
@@ -37,7 +39,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // 1. 有効な機械IDか確認
     const machineRecords = await machinesTable
       .select({
         filterByFormula: `{machineid} = '${machineId}'`,
@@ -50,11 +51,9 @@ export async function POST(req: NextRequest) {
     }
     const machineRecordId = machineRecords[0].id;
 
-    // 2. 最近傍の現場を特定
     const activeSites = await sitesTable.select({ filterByFormula: '{active} = 1' }).all();
     const nearestSite = findNearestSite(lat, lon, activeSites);
 
-    // 3. タイムスタンプと日付を生成
     const now = new Date();
     const timestamp = now.toISOString();
     const dateJST = new Intl.DateTimeFormat('ja-JP', {
@@ -64,15 +63,13 @@ export async function POST(req: NextRequest) {
       day: '2-digit',
     }).format(now).replace(/\//g, '-');
 
-
-    // 4. 保存するデータを作成
     const dataToCreate: Omit<LogFields, 'user' | 'machine'> & {
       user: readonly string[];
       machine: readonly string[];
     } = {
       timestamp,
       date: dateJST,
-      user: [session.user.id],
+      user: [session.user.id], // AirtableのUsersテーブルのレコードID
       machine: [machineRecordId],
       lat,
       lon,
@@ -82,7 +79,6 @@ export async function POST(req: NextRequest) {
       type,
     };
 
-    // 5. Airtableにレコードを作成
     await logsTable.create([{ fields: dataToCreate }]);
 
     return NextResponse.json({ message: 'Stamp recorded successfully' }, { status: 201 });

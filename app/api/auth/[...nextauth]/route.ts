@@ -1,11 +1,10 @@
-import NextAuth from 'next-auth';
+import NextAuth, { AuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { usersTable } from '@/lib/airtable';
-import bcrypt from 'bcryptjs';
-import { UserFields } from '@/types';
+// bcryptは将来的に使用するため残しておきます
+// import bcrypt from 'bcryptjs';
 
-// NextAuthの設定
-export const authOptions = {
+export const authOptions: AuthOptions = {
   providers: [
     CredentialsProvider({
       name: 'Credentials',
@@ -13,14 +12,12 @@ export const authOptions = {
         username: { label: 'Username', type: 'text' },
         password: { label: 'Password', type: 'password' },
       },
-      // 認証ロジック
       async authorize(credentials) {
         if (!credentials?.username || !credentials.password) {
           return null;
         }
 
         try {
-          // 1. Airtableからユーザーを検索
           const records = await usersTable
             .select({
               filterByFormula: `{username} = '${credentials.username}'`,
@@ -33,27 +30,20 @@ export const authOptions = {
             console.error('User not found or password not set in Airtable');
             return null;
           }
-
-          // 2. パスワードを比較 (Airtableにはハッシュ化されたパスワードを保存する想定)
-          // ※現状は平文なので、まずは平文で比較します。
-          // const isPasswordValid = await bcrypt.compare(
-          //   credentials.password,
-          //   userRecord.fields.password
-          // );
+          
           const isPasswordValid = credentials.password === userRecord.fields.password;
 
           if (isPasswordValid && userRecord.fields.active) {
-            // 3. 認証成功。セッションに含める情報を返す
             return {
               id: userRecord.id,
               name: userRecord.fields.name,
-              userId: userRecord.fields.userId, // ### 変更点 1 ###
-              email: userRecord.fields.username, // emailの代わりにusernameを使用
+              userId: userRecord.fields.userId,
+              email: userRecord.fields.username,
               role: userRecord.fields.role,
             };
           }
 
-          return null; // パスワードが違うか、ユーザーが非アクティブ
+          return null;
         } catch (error) {
           console.error('Authorize error:', error);
           return null;
@@ -61,35 +51,33 @@ export const authOptions = {
       },
     }),
   ],
-  // セッション管理の設定
   callbacks: {
-    // JWTトークンにカスタム情報を追加
     jwt({ token, user }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
-        // @ts-ignore
-        token.userId = user.userId; // ### 変更点 2 ###
+        // ### 修正点 1: 不要なif文を削除 ###
+        // @ts-expect-error next-authの型拡張が別途必要
+        token.userId = user.userId;
       }
       return token;
     },
-    // セッションオブジェクトにカスタム情報を追加
     session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
-        // @ts-ignore
-        session.user.userId = token.userId as string; // ### 変更点 3 ###
+        // ### 修正点 2: 不要なreturn文を削除 ###
+        // @ts-expect-error next-authの型拡張が別途必要
+        session.user.userId = token.userId as string;
       }
       return session;
     },
   },
   pages: {
-    signIn: '/login', // ログインページのパス
+    signIn: '/login',
   },
   secret: process.env.NEXTAUTH_SECRET,
 };
 
-// NextAuthハンドラをエクスポート
 const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };

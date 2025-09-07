@@ -36,6 +36,7 @@ export default function LoginForm() {
         }
       }
     } catch (err) {
+        console.error("Login failed:", err); // エラー内容をログに出力
       setError('ログイン中にエラーが発生しました。');
     } finally {
       setIsLoading(false);
