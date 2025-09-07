@@ -1,14 +1,21 @@
+import { Suspense } from 'react';
 import LoginForm from '@/components/LoginForm';
 
+// Suspenseで待っている間に表示するシンプルなローディングUI
+function LoadingFallback() {
+  return (
+    <div className="flex h-screen w-full items-center justify-center">
+      <p>読み込み中...</p>
+    </div>
+  );
+}
+
+// ページ自体はサーバーコンポーネントとして定義
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-100">
-      <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md">
-        <h1 className="mb-6 text-center text-2xl font-bold">
-          AI日報「スマレポ」
-        </h1>
-        <LoginForm />
-      </div>
-    </div>
+    // `useSearchParams` を使っている LoginForm を Suspense でラップする
+    <Suspense fallback={<LoadingFallback />}>
+      <LoginForm />
+    </Suspense>
   );
 }
