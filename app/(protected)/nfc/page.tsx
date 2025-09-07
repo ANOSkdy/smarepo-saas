@@ -44,7 +44,7 @@ export default async function NFCPage({ searchParams }: NFCPageProps) {
           initialWorkDescription={initialWorkDescription}
           userName={session.user.name ?? 'ゲスト'}
           // ### 修正点 2: 取得した機械名をStampCardに渡す ###
-          machineName={machine.fields.name}
+          machineName={searchParams.machineid as string}
         />
       </main>
     );
