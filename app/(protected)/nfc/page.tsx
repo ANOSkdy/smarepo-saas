@@ -1,5 +1,4 @@
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { auth } from '@/lib/auth';
 import StampCard from '@/components/StampCard';
 import { getTodayLogs, getMachineById } from '@/lib/airtable';
 import { redirect } from 'next/navigation';
@@ -12,7 +11,7 @@ type NFCPageProps = {
 };
 
 export default async function NFCPage({ searchParams }: NFCPageProps) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user?.id) {
     redirect('/login');
   }
