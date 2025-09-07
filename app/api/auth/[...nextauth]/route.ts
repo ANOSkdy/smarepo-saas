@@ -1,8 +1,6 @@
 import NextAuth, { AuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { usersTable } from '@/lib/airtable';
-// bcryptは将来的に使用するため残しておきます
-// import bcrypt from 'bcryptjs';
 
 export const authOptions: AuthOptions = {
   providers: [
@@ -56,8 +54,7 @@ export const authOptions: AuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = user.role;
-        // ### 修正点 1: 不要なif文を削除 ###
-        // @ts-expect-error next-authの型拡張が別途必要
+        // ### 修正点 1: 不要なコメントを削除 ###
         token.userId = user.userId;
       }
       return token;
@@ -66,8 +63,7 @@ export const authOptions: AuthOptions = {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
-        // ### 修正点 2: 不要なreturn文を削除 ###
-        // @ts-expect-error next-authの型拡張が別途必要
+        // ### 修正点 2: 不要なコメントを削除 ###
         session.user.userId = token.userId as string;
       }
       return session;
