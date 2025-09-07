@@ -28,3 +28,20 @@ export const machinesTable = getTypedTable<MachineFields>('Machines');
 export const sitesTable = getTypedTable<SiteFields>('Sites');
 export const workTypesTable = getTypedTable<WorkTypeFields>('WorkTypes');
 export const logsTable = getTypedTable<LogFields>('Logs');
+// ... (既存のコード) ...
+
+// machineid(URLのパラメータ)を使って機械レコードを1件取得する関数
+export const getMachineById = async (machineId: string) => {
+  try {
+    const records = await machinesTable
+      .select({
+        filterByFormula: `{machineid} = '${machineId}'`,
+        maxRecords: 1,
+      })
+      .firstPage();
+    return records[0] || null;
+  } catch (error) {
+    console.error('Error fetching machine by ID:', error);
+    throw error;
+  }
+};
