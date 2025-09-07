@@ -27,13 +27,13 @@ export default function LoginForm() {
       if (result?.error) {
         setError('IDまたはパスワードが正しくありません');
       } else if (result?.ok) {
-        const machineId = searchParams.get('machineid');
-                if (machineId) {
-          router.push(`/nfc?machineid=${machineId}`);
-        } else {
-          // もし無ければ machineid 無しで遷移（エラー画面が表示される）
-          router.push('/nfc');
-        }
+        // 現在のページのクエリパラメータを取得
+        const params = new URLSearchParams(searchParams.toString());
+        const queryString = params.toString();
+
+        // リダイレクト先URLを構築
+        const destination = `/nfc${queryString ? `?${queryString}` : ''}`;
+        router.push(destination);
       }
     } catch (err) {
         console.error("Login failed:", err); // エラー内容をログに出力
