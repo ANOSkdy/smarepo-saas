@@ -44,51 +44,55 @@ export default function LoginForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {error && (
-        <p className="rounded-md bg-red-100 p-3 text-center text-red-600">
-          {error}
-        </p>
-      )}
-      <div>
-        <label
-          htmlFor="username"
-          className="block text-sm font-medium text-gray-700"
-        >
-          ID
-        </label>
-        <input
-          id="username"
-          type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-        />
+    <div className="flex min-h-[calc(100vh-61px)] items-center justify-center bg-base">
+      <div className="w-full max-w-sm rounded-lg bg-white p-8 shadow-md">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {error && (
+            <p className="rounded-md border border-accent-2/50 bg-accent-2/10 p-3 text-center font-bold text-accent-2">
+              {error}
+            </p>
+          )}
+          <div>
+            <label
+              htmlFor="username"
+              className="block text-sm font-medium text-gray-700"
+            >
+              ID
+            </label>
+            <input
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700"
+            >
+              パスワード
+            </label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full rounded-md bg-primary px-4 py-2 text-lg font-bold text-white hover:bg-primary/90 disabled:opacity-50"
+          >
+            {isLoading ? 'ログイン中...' : 'ログイン'}
+          </button>
+        </form>
       </div>
-      <div>
-        <label
-          htmlFor="password"
-          className="block text-sm font-medium text-gray-700"
-        >
-          パスワード
-        </label>
-        <input
-          id="password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-        />
-      </div>
-      <button
-        type="submit"
-        disabled={isLoading}
-        className="w-full rounded-md bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 disabled:opacity-50"
-      >
-        {isLoading ? 'ログイン中...' : 'ログイン'}
-      </button>
-    </form>
+    </div>
   );
 }
