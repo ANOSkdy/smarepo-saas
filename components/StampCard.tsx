@@ -14,13 +14,13 @@ type StampCardProps = {
 };
 
 // 完了・エラー・待機時の汎用表示コンポーネント
-const CardState = ({ title, message }: { title: string; message: string }) => (
-    <div className="flex min-h-[calc(100vh-61px)] w-full items-center justify-center p-4">
-        <div className="card">
-            <h2 className="text-xl font-bold">{title}</h2>
-            <p className="mt-4 text-gray-700">{message}</p>
-        </div>
+const CardState = ({ title, message }: { title?: string; message: string }) => (
+  <div className="flex min-h-[calc(100svh-56px)] w-full items-center justify-center p-4">
+    <div className="card">
+      {title && <h2 className="text-xl font-bold">{title}</h2>}
+      <p className="mt-4 text-gray-700">{message}</p>
     </div>
+  </div>
 );
 
 export default function StampCard({
@@ -104,7 +104,14 @@ export default function StampCard({
   if (isLoading) return <CardState title="処理中..." message="サーバーと通信しています。" />;
   if (error) return <CardState title="エラーが発生しました" message={error} />;
   if (!machineId) return <CardState title="無効なアクセス" message="NFCタグから機械IDを読み取れませんでした。" />;
-  if (stampType === 'COMPLETED') return <CardState title="記しました" message="本日の業務お疲れ様でした。" />;
+  if (stampType === 'COMPLETED')
+    return (
+      <div className="flex min-h-[calc(100svh-56px)] w-full items-center justify-center p-4">
+        <p className="whitespace-nowrap break-keep text-center text-black leading-normal max-w-[90vw] mx-auto text-base sm:text-lg">
+          本日の業務お疲れ様でした。
+        </p>
+      </div>
+    );
 
   // メインのUI部分
   const mainContent = (
@@ -116,8 +123,9 @@ export default function StampCard({
                     <span className="font-semibold">機械:</span> {machineName}
                 </p>
                 {stampType === 'OUT' && (
-                    <p className="text-gray-600">
-                        <span className="font-semibold">現在の作業:</span> {lastWorkDescription || 'N/A'}
+                    <p className="text-black">
+                        <span className="font-semibold">現在の作業:</span>{' '}
+                        <span className="whitespace-nowrap">{lastWorkDescription || 'N/A'}</span>
                     </p>
                 )}
             </div>
@@ -125,22 +133,29 @@ export default function StampCard({
         {stampType === 'IN' && (
             <form id="check-in-form" onSubmit={handleCheckIn} className="space-y-4">
                 <div className="card text-left">
-                    <label htmlFor="workDescription" className="mb-2 block text-sm font-medium text-gray-700">
+                    <label htmlFor="workDescription" className="mb-2 block text-sm font-medium text-black">
                         本日の作業内容を選択
                     </label>
-                    <select
-                        id="workDescription"
-                        name="workDescription"
-                        required
-                        value={selectedWork}
-                        onChange={(e) => setSelectedWork(e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 py-3 pl-3 pr-10 text-base shadow-sm focus:border-primary focus:outline-none focus:ring-primary"
-                    >
-                        <option value="" disabled>選択してください</option>
-                        {workTypes.map((wt) => (
-                            <option key={wt.id} value={wt.fields.name}>{wt.fields.name}</option>
-                        ))}
-                    </select>
+                    <div className="relative w-full max-w-[440px] mx-auto">
+                        <select
+                            id="workDescription"
+                            name="workDescription"
+                            required
+                            value={selectedWork}
+                            onChange={(e) => setSelectedWork(e.target.value)}
+                            className="w-full bg-white text-black rounded-xl px-4 py-3 pr-10 text-base leading-tight ring-1 ring-zinc-300 focus:ring-2 focus:ring-primary outline-none appearance-none"
+                        >
+                            <option value="" disabled className="whitespace-nowrap">
+                                選択してください
+                            </option>
+                            {workTypes.map((wt) => (
+                                <option key={wt.id} value={wt.fields.name} className="whitespace-nowrap">
+                                    {wt.fields.name}
+                                </option>
+                            ))}
+                        </select>
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500">▾</span>
+                    </div>
                 </div>
             </form>
         )}
@@ -148,19 +163,19 @@ export default function StampCard({
   );
 
   return (
-    <div className="relative flex min-h-[calc(100vh-61px)] w-full flex-col p-4 pb-32">
-        <div className="w-full max-w-md mx-auto">
+    <div className="relative flex min-h-[calc(100svh-56px)] w-full flex-col items-center justify-center p-4 pb-32">
+        <div className="w-[90vw] max-w-[420px]">
             {mainContent}
             <div className="mt-6">
                 <LogoutButton />
             </div>
         </div>
-        <div className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white/80 p-4 backdrop-blur-sm">
+        <div className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white/80 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] backdrop-blur-sm">
             {stampType === 'IN' ? (
                 <button
                     onClick={() => (document.getElementById('check-in-form') as HTMLFormElement)?.requestSubmit()}
                     disabled={!selectedWork || isLoading}
-                    className="work-btn w-full text-xl disabled:bg-gray-400"
+                    className="work-btn w-full min-h-12 text-lg disabled:bg-gray-400"
                 >
                     出 勤
                 </button>
@@ -169,7 +184,7 @@ export default function StampCard({
                     onClick={handleCheckOut}
                     disabled={isLoading}
                     type="button"
-                    className="work-btn w-full text-xl disabled:bg-gray-400"
+                    className="work-btn w-full min-h-12 text-lg disabled:bg-gray-400"
                 >
                     退 勤
                 </button>
