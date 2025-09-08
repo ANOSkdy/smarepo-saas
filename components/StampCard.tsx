@@ -163,18 +163,10 @@ export default function StampCard({
   );
 
   return (
-    <>
-      <div className="relative flex min-h-[calc(100svh-56px)] w-full flex-col items-center justify-center p-4">
+    <div className="relative flex min-h-[calc(100svh-56px)] w-full flex-col items-center justify-center p-4">
+      <div className="flex flex-col items-center gap-6 pb-[calc(env(safe-area-inset-bottom)+12px)]">
+        <div className="w-[90vw] max-w-[420px]">{mainContent}</div>
         <div className="w-[90vw] max-w-[420px]">
-          {mainContent}
-          <div className="mt-6">
-            <LogoutButton />
-          </div>
-        </div>
-        <div className="h-[calc(env(safe-area-inset-bottom)+84px)]" aria-hidden="true" />
-      </div>
-      <footer className="fixed inset-x-0 bottom-0 z-50 border-t border-zinc-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70">
-        <div className="mx-auto w-full max-w-[560px] px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">
           {stampType === 'IN' ? (
             <button
               onClick={() => (document.getElementById('check-in-form') as HTMLFormElement)?.requestSubmit()}
@@ -194,7 +186,10 @@ export default function StampCard({
             </button>
           )}
         </div>
-      </footer>
-    </>
+      </div>
+      <div className="mt-6 w-[90vw] max-w-[420px]">
+        <LogoutButton />
+      </div>
+    </div>
   );
 }
