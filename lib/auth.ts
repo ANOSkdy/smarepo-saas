@@ -86,11 +86,11 @@ export const {
   pages: {
     signIn: '/login',
   },
-  events: {
-    error(error) {
+  logger: {
+    error(code, ...metadata) {
       console.error('Auth error', {
-        name: error.name,
-        message: error.message,
+        code,
+        metadata,
         secretPresent: Boolean(secret),
         secretLength: secret?.length,
       });
