@@ -4,38 +4,67 @@ import {
   logsTable,
   machinesTable,
   sitesTable,
-  // ### 修正点: 未使用のため削除 ###
-  // usersTable, 
 } from '@/lib/airtable';
 import { findNearestSite } from '@/lib/geo';
 import { LogFields } from '@/types';
 
+export const runtime = 'nodejs';
+
+type StampRequest = {
+  machineId: string;
+  workDescription: string;
+  lat: number;
+  lon: number;
+  accuracy?: number;
+  type: 'IN' | 'OUT';
+};
+
+export function validateStampRequest(
+  data: unknown,
+): { success: true; data: StampRequest } | { success: false; hint: string } {
+  const body = data as Partial<StampRequest>;
+  if (
+    typeof body.machineId !== 'string' ||
+    typeof body.workDescription !== 'string' ||
+    typeof body.lat !== 'number' ||
+    typeof body.lon !== 'number' ||
+    (body.accuracy !== undefined && typeof body.accuracy !== 'number') ||
+    (body.type !== 'IN' && body.type !== 'OUT')
+  ) {
+    return {
+      success: false,
+      hint: 'machineId, workDescription, lat, lon, type are required',
+    };
+  }
+  return { success: true, data: body as StampRequest };
+}
+
+function errorResponse(
+  code: string,
+  reason: string,
+  hint: string,
+  status: number,
+) {
+  return NextResponse.json({ ok: false, code, reason, hint }, { status });
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth();
-  // session.user.userId を使用する場合は session.user.id を userId に変更してください
-  if (!session?.user?.id) { 
-    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+  if (!session?.user?.id) {
+    return errorResponse(
+      'UNAUTHORIZED',
+      'Authentication required',
+      'Sign in and retry',
+      401,
+    );
   }
 
-  const {
-    machineId,
-    workDescription,
-    lat,
-    lon,
-    accuracy,
-    type,
-  }: {
-    machineId: string;
-    workDescription: string;
-    lat: number;
-    lon: number;
-    accuracy: number;
-    type: 'IN' | 'OUT';
-  } = await req.json();
-
-  if (!machineId || !workDescription || !lat || !lon || !type) {
-    return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
+  const parsed = validateStampRequest(await req.json());
+  if (!parsed.success) {
+    return errorResponse('INVALID_BODY', 'Invalid request body', parsed.hint, 400);
   }
+
+  const { machineId, workDescription, lat, lon, accuracy, type } = parsed.data;
 
   try {
     const machineRecords = await machinesTable
@@ -46,7 +75,12 @@ export async function POST(req: NextRequest) {
       .firstPage();
 
     if (machineRecords.length === 0 || !machineRecords[0].fields.active) {
-      return NextResponse.json({ message: 'Invalid or inactive machine ID' }, { status: 400 });
+      return errorResponse(
+        'INVALID_MACHINE',
+        'Invalid or inactive machine ID',
+        'Check machineId',
+        400,
+      );
     }
     const machineRecordId = machineRecords[0].id;
 
@@ -80,9 +114,17 @@ export async function POST(req: NextRequest) {
 
     await logsTable.create([{ fields: dataToCreate }]);
 
-    return NextResponse.json({ message: 'Stamp recorded successfully' }, { status: 201 });
+    return NextResponse.json(
+      { ok: true, message: 'Stamp recorded successfully' },
+      { status: 201 },
+    );
   } catch (error) {
     console.error('Failed to record stamp:', error);
-    return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
+    return errorResponse(
+      'INTERNAL_ERROR',
+      'Internal Server Error',
+      'Retry later',
+      500,
+    );
   }
 }
