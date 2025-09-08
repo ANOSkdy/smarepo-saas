@@ -163,33 +163,38 @@ export default function StampCard({
   );
 
   return (
-    <div className="relative flex min-h-[calc(100svh-56px)] w-full flex-col items-center justify-center p-4 pb-32">
+    <>
+      <div className="relative flex min-h-[calc(100svh-56px)] w-full flex-col items-center justify-center p-4">
         <div className="w-[90vw] max-w-[420px]">
-            {mainContent}
-            <div className="mt-6">
-                <LogoutButton />
-            </div>
+          {mainContent}
+          <div className="mt-6">
+            <LogoutButton />
+          </div>
         </div>
-        <div className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white/80 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] backdrop-blur-sm">
-            {stampType === 'IN' ? (
-                <button
-                    onClick={() => (document.getElementById('check-in-form') as HTMLFormElement)?.requestSubmit()}
-                    disabled={!selectedWork || isLoading}
-                    className="work-btn w-full min-h-12 text-lg disabled:bg-gray-400"
-                >
-                    出 勤
-                </button>
-            ) : (
-                <button
-                    onClick={handleCheckOut}
-                    disabled={isLoading}
-                    type="button"
-                    className="work-btn w-full min-h-12 text-lg disabled:bg-gray-400"
-                >
-                    退 勤
-                </button>
-            )}
+        <div className="h-[calc(env(safe-area-inset-bottom)+84px)]" aria-hidden="true" />
+      </div>
+      <footer className="fixed inset-x-0 bottom-0 z-50 border-t border-zinc-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70">
+        <div className="mx-auto w-full max-w-[560px] px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">
+          {stampType === 'IN' ? (
+            <button
+              onClick={() => (document.getElementById('check-in-form') as HTMLFormElement)?.requestSubmit()}
+              disabled={!selectedWork || isLoading}
+              className="work-btn w-full min-h-12 text-lg disabled:bg-gray-400"
+            >
+              出 勤
+            </button>
+          ) : (
+            <button
+              onClick={handleCheckOut}
+              disabled={isLoading}
+              type="button"
+              className="work-btn w-full min-h-12 text-lg disabled:bg-gray-400"
+            >
+              退 勤
+            </button>
+          )}
         </div>
-    </div>
+      </footer>
+    </>
   );
 }
