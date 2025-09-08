@@ -16,7 +16,7 @@ type StampCardProps = {
 // 完了・エラー・待機時の汎用表示コンポーネント
 const CardState = ({ title, message }: { title: string; message: string }) => (
     <div className="flex min-h-[calc(100vh-61px)] w-full items-center justify-center p-4">
-        <div className="w-full max-w-md rounded-lg bg-white p-8 text-center shadow-md">
+        <div className="card">
             <h2 className="text-xl font-bold">{title}</h2>
             <p className="mt-4 text-gray-700">{message}</p>
         </div>
@@ -104,12 +104,12 @@ export default function StampCard({
   if (isLoading) return <CardState title="処理中..." message="サーバーと通信しています。" />;
   if (error) return <CardState title="エラーが発生しました" message={error} />;
   if (!machineId) return <CardState title="無効なアクセス" message="NFCタグから機械IDを読み取れませんでした。" />;
-  if (stampType === 'COMPLETED') return <CardState title="記録しました" message="本日の業務お疲れ様でした。" />;
+  if (stampType === 'COMPLETED') return <CardState title="記しました" message="本日の業務お疲れ様でした。" />;
 
   // メインのUI部分
   const mainContent = (
     <div className="space-y-4">
-        <div className="rounded-lg bg-white p-6 shadow-md">
+        <div className="card">
             <div className="space-y-2 text-center">
                 <p className="text-lg font-semibold text-gray-800">{userName} さん</p>
                 <p className="text-gray-600">
@@ -124,7 +124,7 @@ export default function StampCard({
         </div>
         {stampType === 'IN' && (
             <form id="check-in-form" onSubmit={handleCheckIn} className="space-y-4">
-                <div className="rounded-lg bg-white p-6 shadow-md">
+                <div className="card text-left">
                     <label htmlFor="workDescription" className="mb-2 block text-sm font-medium text-gray-700">
                         本日の作業内容を選択
                     </label>
@@ -160,7 +160,7 @@ export default function StampCard({
                 <button
                     onClick={() => (document.getElementById('check-in-form') as HTMLFormElement)?.requestSubmit()}
                     disabled={!selectedWork || isLoading}
-                    className="w-full rounded-lg bg-primary px-4 py-4 text-xl font-bold text-white shadow-lg hover:bg-primary/90 disabled:bg-gray-400"
+                    className="work-btn w-full text-xl disabled:bg-gray-400"
                 >
                     出 勤
                 </button>
@@ -169,7 +169,7 @@ export default function StampCard({
                     onClick={handleCheckOut}
                     disabled={isLoading}
                     type="button"
-                    className="w-full rounded-lg bg-primary px-4 py-4 text-xl font-bold text-white shadow-lg hover:bg-primary/90 disabled:bg-gray-400"
+                    className="work-btn w-full text-xl disabled:bg-gray-400"
                 >
                     退 勤
                 </button>
