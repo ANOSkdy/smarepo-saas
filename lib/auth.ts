@@ -3,12 +3,19 @@ import Credentials from 'next-auth/providers/credentials';
 import { usersTable } from '@/lib/airtable';
 import type { User } from 'next-auth';
 
+const secret = process.env.NEXTAUTH_SECRET;
+if (!secret) {
+  console.error('NEXTAUTH_SECRET is not set');
+}
+
 export const {
   handlers: { GET, POST },
   auth,
   signIn,
   signOut,
 } = NextAuth({
+  secret,
+  session: { strategy: 'jwt' },
   providers: [
     Credentials({
       name: 'Credentials',
@@ -78,5 +85,15 @@ export const {
   },
   pages: {
     signIn: '/login',
+  },
+  logger: {
+    error(code, ...metadata) {
+      console.error('Auth error', {
+        code,
+        metadata,
+        secretPresent: Boolean(secret),
+        secretLength: secret?.length,
+      });
+    },
   },
 });

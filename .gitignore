@@ -11,3 +11,4 @@
 # Next.js build output
 .next
 /out/
+tests/dist
