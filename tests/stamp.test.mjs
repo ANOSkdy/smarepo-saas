@@ -17,3 +17,14 @@ test('validateStampRequest succeeds on valid data', () => {
   });
   assert.strictEqual(result.success, true);
 });
+
+test('validateStampRequest fails on invalid type', () => {
+  const result = validateStampRequest({
+    machineId: '1',
+    workDescription: 'test',
+    lat: 0,
+    lon: 0,
+    type: 'INVALID',
+  });
+  assert.strictEqual(result.success, false);
+});

@@ -14,10 +14,10 @@ type StampCardProps = {
 };
 
 // 完了・エラー・待機時の汎用表示コンポーネント
-const CardState = ({ title, message }: { title: string; message: string }) => (
-    <div className="flex min-h-[calc(100vh-61px)] w-full items-center justify-center p-4">
+const CardState = ({ title, message }: { title?: string; message: string }) => (
+    <div className="flex min-h-screen w-full items-center justify-center p-4">
         <div className="card">
-            <h2 className="text-xl font-bold">{title}</h2>
+            {title && <h2 className="text-xl font-bold">{title}</h2>}
             <p className="mt-4 text-gray-700">{message}</p>
         </div>
     </div>
@@ -104,7 +104,7 @@ export default function StampCard({
   if (isLoading) return <CardState title="処理中..." message="サーバーと通信しています。" />;
   if (error) return <CardState title="エラーが発生しました" message={error} />;
   if (!machineId) return <CardState title="無効なアクセス" message="NFCタグから機械IDを読み取れませんでした。" />;
-  if (stampType === 'COMPLETED') return <CardState title="記しました" message="本日の業務お疲れ様でした。" />;
+  if (stampType === 'COMPLETED') return <CardState message="本日の業務お疲れ様でした。" />;
 
   // メインのUI部分
   const mainContent = (
@@ -116,8 +116,9 @@ export default function StampCard({
                     <span className="font-semibold">機械:</span> {machineName}
                 </p>
                 {stampType === 'OUT' && (
-                    <p className="text-gray-600">
-                        <span className="font-semibold">現在の作業:</span> {lastWorkDescription || 'N/A'}
+                    <p className="text-black">
+                        <span className="font-semibold">現在の作業:</span>{' '}
+                        <span className="whitespace-nowrap">{lastWorkDescription || 'N/A'}</span>
                     </p>
                 )}
             </div>
@@ -125,7 +126,7 @@ export default function StampCard({
         {stampType === 'IN' && (
             <form id="check-in-form" onSubmit={handleCheckIn} className="space-y-4">
                 <div className="card text-left">
-                    <label htmlFor="workDescription" className="mb-2 block text-sm font-medium text-gray-700">
+                    <label htmlFor="workDescription" className="mb-2 block text-sm font-medium text-black">
                         本日の作業内容を選択
                     </label>
                     <select
@@ -134,11 +135,15 @@ export default function StampCard({
                         required
                         value={selectedWork}
                         onChange={(e) => setSelectedWork(e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 py-3 pl-3 pr-10 text-base shadow-sm focus:border-primary focus:outline-none focus:ring-primary"
+                        className="mt-1 block w-full rounded-md border-gray-300 py-3 pl-3 pr-10 text-base text-black shadow-sm focus:border-primary focus:outline-none focus:ring-primary"
                     >
-                        <option value="" disabled>選択してください</option>
+                        <option value="" disabled className="whitespace-nowrap">
+                            選択してください
+                        </option>
                         {workTypes.map((wt) => (
-                            <option key={wt.id} value={wt.fields.name}>{wt.fields.name}</option>
+                            <option key={wt.id} value={wt.fields.name} className="whitespace-nowrap">
+                                {wt.fields.name}
+                            </option>
                         ))}
                     </select>
                 </div>
@@ -148,8 +153,8 @@ export default function StampCard({
   );
 
   return (
-    <div className="relative flex min-h-[calc(100vh-61px)] w-full flex-col p-4 pb-32">
-        <div className="w-full max-w-md mx-auto">
+    <div className="relative flex min-h-screen w-full flex-col items-center justify-center p-4 pb-32">
+        <div className="w-full max-w-md">
             {mainContent}
             <div className="mt-6">
                 <LogoutButton />
