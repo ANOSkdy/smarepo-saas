@@ -1,3 +1,67 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root{
+  --bg-base:#F9F9F9; --card-bg:#FFFFFF;
+  --text-dark:#2C3E50; --text-light:#FFFFFF;
+  --primary:#4A90E2; --secondary:#50E3C2;
+  --accent-1:#FFD166; --accent-2:#F25F5C; --accent-3:#9D59EC;
+}
+
+@layer base {
+  html, body{
+    @apply bg-base text-zinc-900;
+    background-image: radial-gradient(circle, #E0E0E0 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  h1 { @apply text-2xl font-bold; }
+  h2 { @apply text-xl font-semibold; }
+  a  { @apply text-primary hover:underline; }
+}
+
+@layer components {
+  .container-p { @apply max-w-5xl mx-auto px-6; }
+
+  .card {
+    @apply bg-white rounded-2xl border border-zinc-200 p-10 text-center w-[90%] max-w-[400px] transition-all duration-300 ease-in-out shadow;
+    box-shadow: 0 8px 24px rgba(74,144,226,0.1);
+  }
+
+  .btn-primary { @apply bg-primary text-white rounded-xl px-4 py-2 hover:opacity-90; }
+
+  .work-buttons { @apply flex flex-col gap-3 max-h-[calc(100vh-250px)] overflow-y-auto pr-[5px]; }
+
+  .work-btn {
+    @apply px-4 py-4 rounded-xl font-bold text-base bg-primary text-white cursor-pointer transition;
+    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.2);
+  }
+  .work-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(74, 144, 226, 0.3);
+  }
+
+  .retry-btn{
+    @apply px-4 py-4 rounded-xl font-bold text-base text-dark cursor-pointer transition;
+    background-color: var(--accent-1);
+    box-shadow: 0 4px 12px rgba(255, 209, 102, 0.3);
+  }
+  .retry-btn:hover {
+    box-shadow: 0 6px 16px rgba(255, 209, 102, 0.4);
+  }
+
+  .loader {
+    border: 5px solid rgba(74, 144, 226, 0.2);
+    border-top: 5px solid var(--primary);
+    border-radius: 9999px;
+    width: 50px; height: 50px;
+    margin: 1.5rem auto;
+    animation: spin 1s linear infinite;
+  }
+
+  .icon {
+    width: 72px; height: 72px; stroke-width: 2px; margin: 0 auto 1rem auto; display: block;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+}

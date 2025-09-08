@@ -44,8 +44,8 @@ export default function LoginForm() {
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-61px)] items-center justify-center bg-base">
-      <div className="w-full max-w-sm rounded-lg bg-white p-8 shadow-md">
+    <div className="container-p flex min-h-[calc(100vh-61px)] items-center justify-center bg-base">
+      <div className="card text-left">
         <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
             <p className="rounded-md border border-accent-2/50 bg-accent-2/10 p-3 text-center font-bold text-accent-2">
@@ -87,7 +87,7 @@ export default function LoginForm() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full rounded-md bg-primary px-4 py-2 text-lg font-bold text-white hover:bg-primary/90 disabled:opacity-50"
+            className="btn-primary w-full text-lg font-bold disabled:opacity-50"
           >
             {isLoading ? 'ログイン中...' : 'ログイン'}
           </button>

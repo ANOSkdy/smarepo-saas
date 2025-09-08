@@ -17,7 +17,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
-      <body className={`${inter.className} bg-base`}>
+      <body className={`${inter.className} bg-base grid place-items-center min-h-screen`}>
         <header className="w-full bg-white shadow-md">
           <div className="mx-auto max-w-4xl px-4 py-3">
             <h1 className="text-xl font-bold text-gray-800">スマレポ</h1>

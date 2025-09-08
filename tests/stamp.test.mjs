@@ -6,3 +6,14 @@ test('validateStampRequest fails on missing fields', () => {
   const result = validateStampRequest({});
   assert.strictEqual(result.success, false);
 });
+
+test('validateStampRequest succeeds on valid data', () => {
+  const result = validateStampRequest({
+    machineId: '1',
+    workDescription: 'test',
+    lat: 0,
+    lon: 0,
+    type: 'IN',
+  });
+  assert.strictEqual(result.success, true);
+});
