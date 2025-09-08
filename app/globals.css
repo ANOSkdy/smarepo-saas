@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 :root{
+  /* 既存の色変数はそのまま */
   --bg-base:#F9F9F9; --card-bg:#FFFFFF;
   --text-dark:#2C3E50; --text-light:#FFFFFF;
   --primary:#4A90E2; --secondary:#50E3C2;
@@ -11,6 +12,7 @@
 
 @layer base {
   html, body{
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
     @apply bg-base text-zinc-900;
     background-image: radial-gradient(circle, #E0E0E0 1px, transparent 1px);
     background-size: 20px 20px;
