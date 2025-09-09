@@ -113,83 +113,78 @@ export default function StampCard({
       </div>
     );
 
-  // メインのUI部分
-  const mainContent = (
-    <div className="space-y-4">
-        <div className="card">
-            <div className="space-y-2 text-center">
-                <p className="text-lg font-semibold text-gray-800">{userName} さん</p>
-                <p className="text-gray-600">
-                    <span className="font-semibold">機械:</span> {machineName}
-                </p>
-                {stampType === 'OUT' && (
-                    <p className="text-black">
-                        <span className="font-semibold">現在の作業:</span>{' '}
-                        <span className="whitespace-nowrap">{lastWorkDescription || 'N/A'}</span>
-                    </p>
-                )}
-            </div>
-        </div>
-        {stampType === 'IN' && (
-            <form id="check-in-form" onSubmit={handleCheckIn} className="space-y-4">
-                <div className="card text-left">
-                    <label htmlFor="workDescription" className="mb-2 block text-sm font-medium text-black">
-                        本日の作業内容を選択
-                    </label>
-                    <div className="relative w-full max-w-[440px] mx-auto">
-                        <select
-                            id="workDescription"
-                            name="workDescription"
-                            required
-                            value={selectedWork}
-                            onChange={(e) => setSelectedWork(e.target.value)}
-                            className="w-full bg-white text-black rounded-xl px-4 py-3 pr-10 text-base leading-tight ring-1 ring-zinc-300 focus:ring-2 focus:ring-primary outline-none appearance-none"
-                        >
-                            <option value="" disabled className="whitespace-nowrap">
-                                選択してください
-                            </option>
-                            {workTypes.map((wt) => (
-                                <option key={wt.id} value={wt.fields.name} className="whitespace-nowrap">
-                                    {wt.fields.name}
-                                </option>
-                            ))}
-                        </select>
-                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500">▾</span>
-                    </div>
-                </div>
-            </form>
-        )}
-    </div>
-  );
-
   return (
-    <div className="relative flex min-h-[calc(100svh-56px)] w-full flex-col items-center justify-center p-4 pb-32">
-        <div className="w-[90vw] max-w-[420px]">
-            {mainContent}
-            <div className="mt-6">
-                <LogoutButton />
+    <div className="flex min-h-[calc(100svh-56px)] w-full flex-col items-center gap-6 p-4 pb-[calc(env(safe-area-inset-bottom)+12px)]">
+      <div className="card w-[90vw] max-w-[560px] mx-auto">
+        <div className="space-y-2 text-center">
+          <p className="text-lg font-semibold text-gray-800">{userName} さん</p>
+          <p className="text-gray-600">
+            <span className="font-semibold">機械:</span> {machineName}
+          </p>
+        </div>
+      </div>
+      {stampType === 'IN' ? (
+        <>
+          <form id="check-in-form" onSubmit={handleCheckIn} className="w-full">
+            <div className="card w-[90vw] max-w-[560px] mx-auto text-left">
+              <label htmlFor="workDescription" className="mb-2 block text-sm font-medium text-black">
+                本日の作業内容を選択
+              </label>
+              <div className="relative w-full">
+                <select
+                  id="workDescription"
+                  name="workDescription"
+                  required
+                  value={selectedWork}
+                  onChange={(e) => setSelectedWork(e.target.value)}
+                  className="w-full bg-white text-black rounded-xl px-4 py-3 pr-10 text-base leading-tight ring-1 ring-zinc-300 focus:ring-2 focus:ring-primary outline-none appearance-none"
+                >
+                  <option value="" disabled className="whitespace-nowrap">
+                    選択してください
+                  </option>
+                  {workTypes.map((wt) => (
+                    <option key={wt.id} value={wt.fields.name} className="whitespace-nowrap">
+                      {wt.fields.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500">▾</span>
+              </div>
             </div>
-        </div>
-        <div className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white/80 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] backdrop-blur-sm">
-            {stampType === 'IN' ? (
-                <button
-                    onClick={() => (document.getElementById('check-in-form') as HTMLFormElement)?.requestSubmit()}
-                    disabled={!selectedWork || isLoading}
-                    className="work-btn w-full min-h-12 text-lg disabled:bg-gray-400"
-                >
-                    出 勤
-                </button>
-            ) : (
-                <button
-                    onClick={handleCheckOut}
-                    disabled={isLoading}
-                    type="button"
-                    className="work-btn w-full min-h-12 text-lg disabled:bg-gray-400"
-                >
-                    退 勤
-                </button>
-            )}
-        </div>
+          </form>
+          <div className="w-[90vw] max-w-[560px] mx-auto px-4">
+            <button
+              onClick={() => (document.getElementById('check-in-form') as HTMLFormElement)?.requestSubmit()}
+              disabled={!selectedWork || isLoading}
+              className="work-btn w-full min-h-12 text-lg disabled:bg-gray-400"
+            >
+              出 勤
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="card w-[90vw] max-w-[560px] mx-auto text-center">
+            <p className="text-black">
+              <span className="font-semibold">現在の作業:</span>{' '}
+              <span className="whitespace-nowrap">{lastWorkDescription || 'N/A'}</span>
+            </p>
+          </div>
+          <div className="w-[90vw] max-w-[560px] mx-auto px-4">
+            <button
+              onClick={handleCheckOut}
+              disabled={isLoading}
+              type="button"
+              className="work-btn w-full min-h-12 text-lg disabled:bg-gray-400"
+            >
+              退 勤
+            </button>
+          </div>
+        </>
+      )}
+      <div className="w-[90vw] max-w-[560px] mx-auto">
+        <LogoutButton />
+      </div>
     </div>
   );
 }

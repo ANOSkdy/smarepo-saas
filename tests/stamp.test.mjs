@@ -28,3 +28,16 @@ test('validateStampRequest fails on invalid type', () => {
   });
   assert.strictEqual(result.success, false);
 });
+
+test('validateStampRequest fails on invalid accuracy type', () => {
+  const result = validateStampRequest({
+    machineId: '1',
+    workDescription: 'test',
+    lat: 0,
+    lon: 0,
+    type: 'IN',
+    accuracy: 'bad',
+  });
+  assert.strictEqual(result.success, false);
+});
+
