@@ -40,3 +40,9 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 - `NEXTAUTH_SECRET` は Preview/Production で同一値を使用し、ローテーション時は再ログインを周知する
 - セッション異常時はブラウザの Cookie を削除して再ログインする
 - 環境変数更新後は Vercel の対象環境へ再デプロイする
+
+## /api/out-to-session
+- Required env: `AIRTABLE_API_KEY`, `AIRTABLE_BASE_ID`
+- Optional env: `AIRTABLE_TABLE_LOGS` (default `Logs`), `AIRTABLE_TABLE_SESSIONS` (default `Session`)
+- `curl -sS -X POST https://<YOUR_DEPLOY>/api/out-to-session -H "Content-Type: application/json" -d '{"outLogId":"recXXXXXXXXXXXX"}'`
+- Matching IN creates Session row; repeats with same OUT are skipped

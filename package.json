@@ -7,7 +7,7 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsc app/api/stamp/validator.ts --module nodenext --target es2020 --moduleResolution nodenext --esModuleInterop --outDir tests/dist && node --test tests/stamp.test.mjs"
+    "test": "tsc app/api/stamp/validator.ts --module nodenext --target es2020 --moduleResolution nodenext --esModuleInterop --outDir tests/dist && node --test tests/*.test.mjs"
   },
   "dependencies": {
     "airtable": "^0.12.2",
