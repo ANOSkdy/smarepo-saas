@@ -39,7 +39,37 @@ export interface LogFields extends FieldSet {
   lat?: number;
   lon?: number;
   accuracy?: number;
+  positionTimestamp?: number;
+  distanceToSite?: number;
+  decisionThreshold?: number;
+  serverDecision?: 'accepted' | 'needs_review';
+  status?: 'accepted' | 'needs_review' | 'rejected';
   siteName?: string;
   workDescription?: string;
   type: 'IN' | 'OUT';
 }
+
+export type StampPayload = {
+  siteId: string;
+  lat: number;
+  lon: number;
+  accuracy?: number;
+  positionTimestamp?: number;
+  distanceToSite?: number;
+  decisionThreshold?: number;
+  clientDecision?: 'auto' | 'blocked';
+};
+
+export type StampRecord = {
+  id: string;
+  siteId: string;
+  lat: number;
+  lon: number;
+  accuracy?: number;
+  positionTimestamp?: number;
+  distanceToSite?: number;
+  decisionThreshold?: number;
+  serverDecision?: 'accepted' | 'needs_review';
+  status?: 'accepted' | 'needs_review' | 'rejected';
+  createdAt: string;
+};

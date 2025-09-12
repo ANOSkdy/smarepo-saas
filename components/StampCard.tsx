@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { WorkTypeFields } from '@/types';
+import { SiteFields, WorkTypeFields } from '@/types';
 import { Record } from 'airtable';
 import LogoutButton from './LogoutButton'; // LogoutButtonをインポート
+import { findNearestSite } from '@/lib/geo';
 
 type StampCardProps = {
   initialStampType: 'IN' | 'OUT';
@@ -31,6 +32,7 @@ export default function StampCard({
 }: StampCardProps) {
   const [stampType, setStampType] = useState<'IN' | 'OUT' | 'COMPLETED'>(initialStampType);
   const [workTypes, setWorkTypes] = useState<Record<WorkTypeFields>[]>([]);
+  const [sites, setSites] = useState<Record<SiteFields>[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [lastWorkDescription, setLastWorkDescription] = useState(initialWorkDescription);
@@ -51,17 +53,93 @@ export default function StampCard({
     }
   }, [stampType]);
 
+  useEffect(() => {
+    fetch('/api/masters/sites')
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch sites');
+        return res.json();
+      })
+      .then((data) => setSites(data))
+      .catch(() => setError('拠点マスタの取得に失敗しました。'));
+  }, []);
+
   const handleStamp = async (type: 'IN' | 'OUT', workDescription: string) => {
     setIsLoading(true);
     setError('');
+    const opts: PositionOptions = {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 10000,
+    };
+
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude, accuracy } = position.coords;
+        const positionTimestamp = position.timestamp;
+        const ageMs = Date.now() - positionTimestamp;
+        if (ageMs > 10_000) {
+          setError('位置情報が古いため打刻を中断しました。');
+          setIsLoading(false);
+          return;
+        }
+        if (typeof accuracy === 'number' && accuracy > 100) {
+          setError('位置精度が不十分（>100m）です。');
+          setIsLoading(false);
+          return;
+        }
+
+        const nearestSite = findNearestSite(latitude, longitude, sites);
+        const decisionThreshold = 300;
+        const haversineDistance = (
+          lat1: number,
+          lon1: number,
+          lat2: number,
+          lon2: number,
+        ) => {
+          const R = 6371e3;
+          const toRad = (deg: number) => (deg * Math.PI) / 180;
+          const dLat = toRad(lat2 - lat1);
+          const dLon = toRad(lon2 - lon1);
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) *
+              Math.cos(toRad(lat2)) *
+              Math.sin(dLon / 2) *
+              Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          return R * c;
+        };
+        const distanceToSite = nearestSite
+          ? haversineDistance(
+              latitude,
+              longitude,
+              nearestSite.fields.lat,
+              nearestSite.fields.lon,
+            )
+          : Number.POSITIVE_INFINITY;
+        if (distanceToSite > decisionThreshold) {
+          setError('現在地と登録拠点の距離が大きいため打刻を中断しました。');
+          setIsLoading(false);
+          return;
+        }
+
         try {
           const response = await fetch('/api/stamp', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ machineId, workDescription, lat: latitude, lon: longitude, accuracy, type }),
+            body: JSON.stringify({
+              machineId,
+              workDescription,
+              lat: latitude,
+              lon: longitude,
+              accuracy,
+              type,
+              positionTimestamp,
+              distanceToSite,
+              decisionThreshold,
+              clientDecision: 'auto',
+              siteId: nearestSite?.fields.siteId,
+            }),
           });
           if (!response.ok) {
             const res = await response.json();
@@ -84,7 +162,7 @@ export default function StampCard({
         setError(`位置情報の取得に失敗しました: ${geoError.message}`);
         setIsLoading(false);
       },
-      { enableHighAccuracy: true }
+      opts,
     );
   };
 
