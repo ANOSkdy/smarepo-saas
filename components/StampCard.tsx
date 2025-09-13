@@ -165,7 +165,7 @@ export default function StampCard({
 
   return (
     <div className="flex min-h-[calc(100svh-56px)] w-full flex-col items-center gap-6 p-4 pb-[calc(env(safe-area-inset-bottom)+12px)]">
-      {warning && (
+        {warning && (
         <div
           role="alert"
           className="w-[90vw] max-w-[560px] rounded bg-yellow-50 p-2 text-sm text-yellow-800"
