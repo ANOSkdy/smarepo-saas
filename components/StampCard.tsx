@@ -84,42 +84,7 @@ export default function StampCard({
           setIsLoading(false);
           return;
         }
-        const { site: decidedSite } = findNearestSite(latitude, longitude, sites);
-        const haversineDistance = (
-          lat1: number,
-          lon1: number,
-          lat2: number,
-          lon2: number,
-        ) => {
-          const R = 6371e3;
-          const toRad = (deg: number) => (deg * Math.PI) / 180;
-          const dLat = toRad(lat2 - lat1);
-          const dLon = toRad(lon2 - lon1);
-          const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(toRad(lat1)) *
-              Math.cos(toRad(lat2)) *
-              Math.sin(dLon / 2) *
-              Math.sin(dLon / 2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          return R * c;
-        };
-        const distanceToSite = decidedSite
-          ? haversineDistance(
-              latitude,
-              longitude,
-              decidedSite.fields.lat,
-              decidedSite.fields.lon,
-            )
-          : Number.POSITIVE_INFINITY;
-        const warnings: string[] = [];
-        if (typeof accuracy === 'number' && accuracy > 100) {
-          warnings.push('位置精度が低い可能性があります（>100m）');
-        }
-        if (distanceToSite > 1000) {
-          warnings.push('登録拠点から離れている可能性があります（>1km）');
-        }
-        setWarning(warnings.join(' / '));
+        const decidedSite = findNearestSite(latitude, longitude, sites);
 
         try {
           const response = await fetch('/api/stamp', {
@@ -137,9 +102,17 @@ export default function StampCard({
               siteId: decidedSite?.fields.siteId,
             }),
           });
+          const data = await response.json();
+          const warnings: string[] = [];
+          if (data.low_accuracy) {
+            warnings.push('位置精度が低い可能性があります（>100m）');
+          }
+          if (data.too_far) {
+            warnings.push('登録拠点から離れている可能性があります（>1km）');
+          }
+          setWarning(warnings.join(' / '));
           if (!response.ok) {
-            const res = await response.json();
-            throw new Error(res.message || `サーバーエラー: ${response.statusText}`);
+            throw new Error(data.message || `サーバーエラー: ${response.statusText}`);
           }
           if (type === 'IN') {
             setStampType('OUT');

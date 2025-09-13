@@ -13,6 +13,11 @@ type MultiPolygon = {
 
 export type Geometry = Polygon | MultiPolygon;
 export type DecisionMethod = 'gps_polygon' | 'gps_nearest';
+export type NearestResult = {
+  site: Record<SiteFields> | null;
+  method: DecisionMethod;
+  nearestDistanceM: number | null;
+};
 
 // 2点間の距離を計算するハバーサイン公式
 export const haversineDistance = (
@@ -99,19 +104,19 @@ export const pointInGeometry = (
 };
 
 // 現場リストの中から最も近い現場を見つける関数
-export const findNearestSite = (
+export const findNearestSiteDetailed = (
   lat: number,
   lon: number,
   sites: readonly Record<SiteFields>[]
-): { site: Record<SiteFields> | null; method: DecisionMethod } => {
+): NearestResult => {
   if (sites.length === 0) {
-    return { site: null, method: 'gps_nearest' };
+    return { site: null, method: 'gps_nearest', nearestDistanceM: null };
   }
 
   for (const site of sites) {
     const geom = extractGeometry(site.fields.polygon_geojson ?? null);
     if (geom && pointInGeometry(lat, lon, geom)) {
-      return { site, method: 'gps_polygon' };
+      return { site, method: 'gps_polygon', nearestDistanceM: 0 };
     }
   }
 
@@ -126,5 +131,16 @@ export const findNearestSite = (
     }
   }
 
-  return { site: nearestSite, method: 'gps_nearest' };
+  return {
+    site: nearestSite,
+    method: 'gps_nearest',
+    nearestDistanceM: Number.isFinite(minDistance) ? minDistance : null,
+  };
 };
+
+export const findNearestSite = (
+  lat: number,
+  lon: number,
+  sites: readonly Record<SiteFields>[]
+): Record<SiteFields> | null =>
+  findNearestSiteDetailed(lat, lon, sites).site;
