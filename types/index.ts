@@ -20,6 +20,8 @@ export interface SiteFields extends FieldSet {
   name: string;
   lat: number;
   lon: number;
+  // @ts-expect-error Airtable FieldSet does not include null
+  polygon_geojson?: string | null;
   client: string;
   active?: boolean;
 }
@@ -39,9 +41,11 @@ export interface LogFields extends FieldSet {
   lat?: number;
   lon?: number;
   accuracy?: number;
+  low_accuracy?: boolean;
   positionTimestamp?: number;
   distanceToSite?: number;
   decisionThreshold?: number;
+  decision_method?: 'gps_polygon' | 'gps_nearest';
   serverDecision?: 'accepted' | 'needs_review';
   status?: 'accepted' | 'needs_review' | 'rejected';
   siteName?: string;
@@ -66,9 +70,11 @@ export type StampRecord = {
   lat: number;
   lon: number;
   accuracy?: number;
+  low_accuracy?: boolean;
   positionTimestamp?: number;
   distanceToSite?: number;
   decisionThreshold?: number;
+  decision_method?: 'gps_polygon' | 'gps_nearest';
   serverDecision?: 'accepted' | 'needs_review';
   status?: 'accepted' | 'needs_review' | 'rejected';
   createdAt: string;

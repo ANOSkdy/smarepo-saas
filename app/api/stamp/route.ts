@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     const machineRecordId = machineRecords[0].id;
 
     const activeSites = await sitesTable.select({ filterByFormula: '{active} = 1' }).all();
-    const nearestSite = findNearestSite(lat, lon, activeSites);
+    const { site: nearestSite, method: decisionMethod } = findNearestSite(lat, lon, activeSites);
     const haversineDistance = (
       lat1: number,
       lon1: number,
@@ -94,9 +94,9 @@ export async function POST(req: NextRequest) {
       typeof positionTimestamp === 'number'
         ? Date.now() - positionTimestamp <= 30_000
         : false;
-    const accurate = typeof accuracy === 'number' ? accuracy <= 100 : false;
+    const lowAccuracy = typeof accuracy === 'number' ? accuracy > 100 : false;
     const within = distanceToSite <= threshold;
-    const needsReview = !fresh || !accurate || !within;
+    const needsReview = !fresh || lowAccuracy || !within;
 
     const now = new Date();
     const timestamp = now.toISOString();
@@ -118,9 +118,11 @@ export async function POST(req: NextRequest) {
       lat,
       lon,
       accuracy,
+      low_accuracy: lowAccuracy,
       positionTimestamp,
       distanceToSite,
       decisionThreshold: threshold,
+      decision_method: decisionMethod,
       siteName: nearestSite?.fields.name ?? '特定不能',
       workDescription,
       type,

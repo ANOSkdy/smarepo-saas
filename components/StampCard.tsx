@@ -35,6 +35,7 @@ export default function StampCard({
   const [sites, setSites] = useState<Record<SiteFields>[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
   const [lastWorkDescription, setLastWorkDescription] = useState(initialWorkDescription);
   const [selectedWork, setSelectedWork] = useState('');
 
@@ -83,12 +84,12 @@ export default function StampCard({
           return;
         }
         if (typeof accuracy === 'number' && accuracy > 100) {
-          setError('位置精度が不十分（>100m）です。');
-          setIsLoading(false);
-          return;
+          setWarning('位置精度が低い可能性があります（>100m）');
+        } else {
+          setWarning('');
         }
 
-        const nearestSite = findNearestSite(latitude, longitude, sites);
+        const { site: decidedSite } = findNearestSite(latitude, longitude, sites);
         const decisionThreshold = 300;
         const haversineDistance = (
           lat1: number,
@@ -109,12 +110,12 @@ export default function StampCard({
           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
           return R * c;
         };
-        const distanceToSite = nearestSite
+        const distanceToSite = decidedSite
           ? haversineDistance(
               latitude,
               longitude,
-              nearestSite.fields.lat,
-              nearestSite.fields.lon,
+              decidedSite.fields.lat,
+              decidedSite.fields.lon,
             )
           : Number.POSITIVE_INFINITY;
         if (distanceToSite > decisionThreshold) {
@@ -138,7 +139,7 @@ export default function StampCard({
               distanceToSite,
               decisionThreshold,
               clientDecision: 'auto',
-              siteId: nearestSite?.fields.siteId,
+              siteId: decidedSite?.fields.siteId,
             }),
           });
           if (!response.ok) {
@@ -193,6 +194,14 @@ export default function StampCard({
 
   return (
     <div className="flex min-h-[calc(100svh-56px)] w-full flex-col items-center gap-6 p-4 pb-[calc(env(safe-area-inset-bottom)+12px)]">
+      {warning && (
+        <div
+          role="alert"
+          className="w-[90vw] max-w-[560px] rounded bg-yellow-50 p-2 text-sm text-yellow-800"
+        >
+          {warning}
+        </div>
+      )}
       <div className="card w-[90vw] max-w-[560px] mx-auto">
         <div className="space-y-2 text-center">
           <p className="text-lg font-semibold text-gray-800">{userName} さん</p>
