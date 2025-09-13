@@ -5,7 +5,8 @@ import {
   machinesTable,
   sitesTable,
 } from '@/lib/airtable';
-import { findNearestSite } from '@/lib/geo';
+import { findNearestSiteDetailed } from '@/lib/geo';
+import { LOGS_ALLOWED_FIELDS, filterFields } from '@/lib/airtableSchema';
 import { LogFields } from '@/types';
 import { validateStampRequest } from './validator';
 
@@ -43,8 +44,6 @@ export async function POST(req: NextRequest) {
     lon,
     accuracy,
     type,
-    positionTimestamp,
-    decisionThreshold,
   } = parsed.data;
 
   try {
@@ -66,37 +65,15 @@ export async function POST(req: NextRequest) {
     const machineRecordId = machineRecords[0].id;
 
     const activeSites = await sitesTable.select({ filterByFormula: '{active} = 1' }).all();
-    const nearestSite = findNearestSite(lat, lon, activeSites);
-    const haversineDistance = (
-      lat1: number,
-      lon1: number,
-      lat2: number,
-      lon2: number,
-    ) => {
-      const R = 6371e3;
-      const toRad = (deg: number) => (deg * Math.PI) / 180;
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRad(lat1)) *
-          Math.cos(toRad(lat2)) *
-          Math.sin(dLon / 2) *
-          Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
-    };
-    const distanceToSite = nearestSite
-      ? haversineDistance(lat, lon, nearestSite.fields.lat, nearestSite.fields.lon)
-      : Number.POSITIVE_INFINITY;
-    const threshold = decisionThreshold ?? 300;
-    const fresh =
-      typeof positionTimestamp === 'number'
-        ? Date.now() - positionTimestamp <= 30_000
-        : false;
-    const accurate = typeof accuracy === 'number' ? accuracy <= 100 : false;
-    const within = distanceToSite <= threshold;
-    const needsReview = !fresh || !accurate || !within;
+    console.info('[sites:summary]', {
+      count: activeSites.length,
+      hasAcoru: activeSites.some((s) => s.fields.name === 'Acoru合同会社'),
+      acoruActive:
+        activeSites.find((s) => s.fields.name === 'Acoru合同会社')?.fields.active ?? null,
+      acoruHasPoly: !!activeSites.find((s) => s.fields.name === 'Acoru合同会社')?.fields.polygon_geojson,
+    });
+    const { site: nearestSite, method: decisionMethod, nearestDistanceM } =
+      findNearestSiteDetailed(lat, lon, activeSites);
 
     const now = new Date();
     const timestamp = now.toISOString();
@@ -107,36 +84,37 @@ export async function POST(req: NextRequest) {
       day: '2-digit',
     }).format(now).replace(/\//g, '-');
 
-    const dataToCreate: Omit<LogFields, 'user' | 'machine'> & {
-      user: readonly string[];
-      machine: readonly string[];
-    } = {
+    const candidate = {
       timestamp,
       date: dateJST,
       user: [session.user.id], // AirtableのUsersテーブルのレコードID
       machine: [machineRecordId],
+      siteName: nearestSite?.fields.name ?? null,
       lat,
       lon,
       accuracy,
-      positionTimestamp,
-      distanceToSite,
-      decisionThreshold: threshold,
-      siteName: nearestSite?.fields.name ?? '特定不能',
       workDescription,
       type,
-      serverDecision: needsReview ? 'needs_review' : 'accepted',
-      status: needsReview ? 'needs_review' : 'accepted',
     };
+    const fields = filterFields(candidate, LOGS_ALLOWED_FIELDS) as Partial<LogFields>;
+    if (!fields.siteName && nearestSite?.fields?.name) {
+      fields.siteName = nearestSite.fields.name;
+    }
+    if (!fields.timestamp) {
+      fields.timestamp = timestamp;
+    }
 
-    await logsTable.create([{ fields: dataToCreate }]);
+    await logsTable.create([{ fields }], { typecast: true });
 
     return NextResponse.json(
       {
-        ok: true,
-        message: 'Stamp recorded successfully',
-        serverDecision: needsReview ? 'needs_review' : 'accepted',
+        decidedSiteId: nearestSite?.fields.siteId ?? null,
+        decidedSiteName: nearestSite?.fields.name ?? null,
+        decision_method: decisionMethod,
+        nearest_distance_m: nearestDistanceM ?? null,
+        accuracy,
       },
-      { status: 201 },
+      { status: 200 },
     );
   } catch (error) {
     console.error('Failed to record stamp:', error);
