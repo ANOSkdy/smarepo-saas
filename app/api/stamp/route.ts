@@ -44,7 +44,6 @@ export async function POST(req: NextRequest) {
     lon,
     accuracy,
     type,
-    positionTimestamp,
   } = parsed.data;
 
   try {
@@ -66,15 +65,15 @@ export async function POST(req: NextRequest) {
     const machineRecordId = machineRecords[0].id;
 
     const activeSites = await sitesTable.select({ filterByFormula: '{active} = 1' }).all();
+    console.info('[sites:summary]', {
+      count: activeSites.length,
+      hasAcoru: activeSites.some((s) => s.fields.name === 'Acoru合同会社'),
+      acoruActive:
+        activeSites.find((s) => s.fields.name === 'Acoru合同会社')?.fields.active ?? null,
+      acoruHasPoly: !!activeSites.find((s) => s.fields.name === 'Acoru合同会社')?.fields.polygon_geojson,
+    });
     const { site: nearestSite, method: decisionMethod, nearestDistanceM } =
       findNearestSiteDetailed(lat, lon, activeSites);
-    const fresh =
-      typeof positionTimestamp === 'number'
-        ? Date.now() - positionTimestamp <= 30_000
-        : false;
-    const lowAccuracy = typeof accuracy === 'number' ? accuracy > 100 : false;
-    const tooFar = typeof nearestDistanceM === 'number' ? nearestDistanceM > 1000 : false;
-    const needsReview = !fresh || lowAccuracy || tooFar;
 
     const now = new Date();
     const timestamp = now.toISOString();
@@ -109,14 +108,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       {
-        ok: true,
         decidedSiteId: nearestSite?.fields.siteId ?? null,
+        decidedSiteName: nearestSite?.fields.name ?? null,
         decision_method: decisionMethod,
         nearest_distance_m: nearestDistanceM ?? null,
         accuracy,
-        low_accuracy: lowAccuracy,
-        too_far: tooFar,
-        serverDecision: needsReview ? 'needs_review' : 'accepted',
       },
       { status: 200 },
     );

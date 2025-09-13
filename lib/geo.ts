@@ -45,9 +45,10 @@ type FeatureCollection = { type: 'FeatureCollection'; features?: Feature[] };
 type Raw = Geometry | Feature | FeatureCollection;
 
 export const extractGeometry = (raw: string | null): Geometry | null => {
-  if (!raw) return null;
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
   try {
-    const parsed = JSON.parse(raw) as Raw;
+    const parsed = JSON.parse(trimmed) as Raw;
     const geom =
       parsed.type === 'FeatureCollection'
         ? parsed.features?.[0]?.geometry
@@ -58,7 +59,8 @@ export const extractGeometry = (raw: string | null): Geometry | null => {
       return geom;
     }
     return null;
-  } catch {
+  } catch (e) {
+    console.warn('[geo] polygon parse failed', { raw: trimmed, error: e });
     return null;
   }
 };

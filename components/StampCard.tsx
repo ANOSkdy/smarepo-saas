@@ -36,6 +36,7 @@ export default function StampCard({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
+  const [decisionMethod, setDecisionMethod] = useState('');
   const [lastWorkDescription, setLastWorkDescription] = useState(initialWorkDescription);
   const [selectedWork, setSelectedWork] = useState('');
 
@@ -104,13 +105,17 @@ export default function StampCard({
           });
           const data = await response.json();
           const warnings: string[] = [];
-          if (data.low_accuracy) {
+          if (typeof data.accuracy === 'number' && data.accuracy > 100) {
             warnings.push('位置精度が低い可能性があります（>100m）');
           }
-          if (data.too_far) {
+          if (
+            typeof data.nearest_distance_m === 'number' &&
+            data.nearest_distance_m > 1000
+          ) {
             warnings.push('登録拠点から離れている可能性があります（>1km）');
           }
           setWarning(warnings.join(' / '));
+          setDecisionMethod(data.decision_method ?? '');
           if (!response.ok) {
             throw new Error(data.message || `サーバーエラー: ${response.statusText}`);
           }
@@ -162,12 +167,15 @@ export default function StampCard({
 
   return (
     <div className="flex min-h-[calc(100svh-56px)] w-full flex-col items-center gap-6 p-4 pb-[calc(env(safe-area-inset-bottom)+12px)]">
-      {warning && (
+      {(warning || decisionMethod) && (
         <div
           role="alert"
           className="w-[90vw] max-w-[560px] rounded bg-yellow-50 p-2 text-sm text-yellow-800"
         >
           {warning}
+          {decisionMethod && (
+            <span className="ml-2 text-xs">method: {decisionMethod}</span>
+          )}
         </div>
       )}
       <div className="card w-[90vw] max-w-[560px] mx-auto">
