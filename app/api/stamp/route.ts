@@ -6,6 +6,7 @@ import {
   sitesTable,
 } from '@/lib/airtable';
 import { findNearestSiteDetailed } from '@/lib/geo';
+import { LOGS_ALLOWED_FIELDS, filterFields } from '@/lib/airtableSchema';
 import { LogFields } from '@/types';
 import { validateStampRequest } from './validator';
 
@@ -84,30 +85,27 @@ export async function POST(req: NextRequest) {
       day: '2-digit',
     }).format(now).replace(/\//g, '-');
 
-    const dataToCreate: Omit<LogFields, 'user' | 'machine'> & {
-      user: readonly string[];
-      machine: readonly string[];
-    } = {
+    const candidate = {
       timestamp,
       date: dateJST,
       user: [session.user.id], // AirtableのUsersテーブルのレコードID
       machine: [machineRecordId],
+      siteName: nearestSite?.fields.name ?? null,
       lat,
       lon,
       accuracy,
-      low_accuracy: lowAccuracy,
-      positionTimestamp,
-      distanceToSite: nearestDistanceM ?? undefined,
-      decision_method: decisionMethod,
-      too_far: tooFar,
-      siteName: nearestSite?.fields.name ?? '特定不能',
       workDescription,
       type,
-      serverDecision: needsReview ? 'needs_review' : 'accepted',
-      status: needsReview ? 'needs_review' : 'accepted',
     };
+    const fields = filterFields(candidate, LOGS_ALLOWED_FIELDS) as Partial<LogFields>;
+    if (!fields.siteName && nearestSite?.fields?.name) {
+      fields.siteName = nearestSite.fields.name;
+    }
+    if (!fields.timestamp) {
+      fields.timestamp = timestamp;
+    }
 
-    await logsTable.create([{ fields: dataToCreate }]);
+    await logsTable.create([{ fields }], { typecast: true });
 
     return NextResponse.json(
       {

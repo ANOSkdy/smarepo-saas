@@ -41,14 +41,8 @@ export interface LogFields extends FieldSet {
   lat?: number;
   lon?: number;
   accuracy?: number;
-  low_accuracy?: boolean;
-  positionTimestamp?: number;
-  distanceToSite?: number;
-  decision_method?: 'gps_polygon' | 'gps_nearest';
-  too_far?: boolean;
-  serverDecision?: 'accepted' | 'needs_review';
-  status?: 'accepted' | 'needs_review' | 'rejected';
   siteName?: string;
+  work?: number;
   workDescription?: string;
   type: 'IN' | 'OUT';
 }
@@ -68,12 +62,5 @@ export type StampRecord = {
   lat: number;
   lon: number;
   accuracy?: number;
-  low_accuracy?: boolean;
-  positionTimestamp?: number;
-  distanceToSite?: number;
-  decision_method?: 'gps_polygon' | 'gps_nearest';
-  too_far?: boolean;
-  serverDecision?: 'accepted' | 'needs_review';
-  status?: 'accepted' | 'needs_review' | 'rejected';
   createdAt: string;
 };
