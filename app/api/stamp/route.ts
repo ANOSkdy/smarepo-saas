@@ -44,7 +44,6 @@ export async function POST(req: NextRequest) {
     accuracy,
     type,
     positionTimestamp,
-    decisionThreshold,
   } = parsed.data;
 
   try {
@@ -89,14 +88,13 @@ export async function POST(req: NextRequest) {
     const distanceToSite = nearestSite
       ? haversineDistance(lat, lon, nearestSite.fields.lat, nearestSite.fields.lon)
       : Number.POSITIVE_INFINITY;
-    const threshold = decisionThreshold ?? 300;
     const fresh =
       typeof positionTimestamp === 'number'
         ? Date.now() - positionTimestamp <= 30_000
         : false;
     const lowAccuracy = typeof accuracy === 'number' ? accuracy > 100 : false;
-    const within = distanceToSite <= threshold;
-    const needsReview = !fresh || lowAccuracy || !within;
+    const tooFar = distanceToSite > 1000;
+    const needsReview = !fresh || lowAccuracy || tooFar;
 
     const now = new Date();
     const timestamp = now.toISOString();
@@ -121,8 +119,8 @@ export async function POST(req: NextRequest) {
       low_accuracy: lowAccuracy,
       positionTimestamp,
       distanceToSite,
-      decisionThreshold: threshold,
       decision_method: decisionMethod,
+      too_far: tooFar,
       siteName: nearestSite?.fields.name ?? '特定不能',
       workDescription,
       type,
@@ -135,10 +133,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: true,
-        message: 'Stamp recorded successfully',
+        decidedSiteId: nearestSite?.fields.siteId ?? null,
+        decision_method: decisionMethod,
+        nearest_distance_m: distanceToSite,
+        accuracy,
+        low_accuracy: lowAccuracy,
+        too_far: tooFar,
         serverDecision: needsReview ? 'needs_review' : 'accepted',
       },
-      { status: 201 },
+      { status: 200 },
     );
   } catch (error) {
     console.error('Failed to record stamp:', error);

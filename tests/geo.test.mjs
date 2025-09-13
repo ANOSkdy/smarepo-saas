@@ -11,7 +11,7 @@ execSync(
   { cwd: root, stdio: 'inherit' }
 );
 
-const { findNearestSite } = await import('./dist/lib/geo.js');
+const { findNearestSite, pointInGeometry } = await import('./dist/lib/geo.js');
 
 test('findNearestSite prioritizes polygon containment', () => {
   const polygon = {
@@ -53,4 +53,27 @@ test('findNearestSite falls back to nearest distance', () => {
   const result = findNearestSite(0, 0, [siteA, siteB]);
   assert.strictEqual(result.site, siteA);
   assert.strictEqual(result.method, 'gps_nearest');
+});
+
+test('pointInGeometry excludes holes', () => {
+  const polygon = {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [0, 0],
+        [2, 0],
+        [2, 2],
+        [0, 2],
+        [0, 0],
+      ],
+      [
+        [0.5, 0.5],
+        [0.5, 1.5],
+        [1.5, 1.5],
+        [1.5, 0.5],
+        [0.5, 0.5],
+      ],
+    ],
+  };
+  assert.strictEqual(pointInGeometry(1, 1, polygon), false);
 });

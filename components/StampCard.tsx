@@ -67,6 +67,7 @@ export default function StampCard({
   const handleStamp = async (type: 'IN' | 'OUT', workDescription: string) => {
     setIsLoading(true);
     setError('');
+    setWarning('');
     const opts: PositionOptions = {
       enableHighAccuracy: true,
       maximumAge: 0,
@@ -83,14 +84,7 @@ export default function StampCard({
           setIsLoading(false);
           return;
         }
-        if (typeof accuracy === 'number' && accuracy > 100) {
-          setWarning('位置精度が低い可能性があります（>100m）');
-        } else {
-          setWarning('');
-        }
-
         const { site: decidedSite } = findNearestSite(latitude, longitude, sites);
-        const decisionThreshold = 300;
         const haversineDistance = (
           lat1: number,
           lon1: number,
@@ -118,11 +112,14 @@ export default function StampCard({
               decidedSite.fields.lon,
             )
           : Number.POSITIVE_INFINITY;
-        if (distanceToSite > decisionThreshold) {
-          setError('現在地と登録拠点の距離が大きいため打刻を中断しました。');
-          setIsLoading(false);
-          return;
+        const warnings: string[] = [];
+        if (typeof accuracy === 'number' && accuracy > 100) {
+          warnings.push('位置精度が低い可能性があります（>100m）');
         }
+        if (distanceToSite > 1000) {
+          warnings.push('登録拠点から離れている可能性があります（>1km）');
+        }
+        setWarning(warnings.join(' / '));
 
         try {
           const response = await fetch('/api/stamp', {
@@ -136,8 +133,6 @@ export default function StampCard({
               accuracy,
               type,
               positionTimestamp,
-              distanceToSite,
-              decisionThreshold,
               clientDecision: 'auto',
               siteId: decidedSite?.fields.siteId,
             }),

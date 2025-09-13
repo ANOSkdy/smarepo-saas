@@ -5,8 +5,6 @@ export type StampRequest = {
   lon: number;
   accuracy?: number;
   positionTimestamp?: number;
-  distanceToSite?: number;
-  decisionThreshold?: number;
   clientDecision?: 'auto' | 'blocked';
   siteId?: string;
   type: 'IN' | 'OUT';
@@ -23,8 +21,6 @@ export function validateStampRequest(
     typeof body.lon !== 'number' ||
     (body.accuracy !== undefined && typeof body.accuracy !== 'number') ||
     (body.positionTimestamp !== undefined && typeof body.positionTimestamp !== 'number') ||
-    (body.distanceToSite !== undefined && typeof body.distanceToSite !== 'number') ||
-    (body.decisionThreshold !== undefined && typeof body.decisionThreshold !== 'number') ||
     (body.clientDecision !== undefined &&
       body.clientDecision !== 'auto' &&
       body.clientDecision !== 'blocked') ||
