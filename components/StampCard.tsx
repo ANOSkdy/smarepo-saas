@@ -35,6 +35,7 @@ export default function StampCard({
   const [sites, setSites] = useState<Record<SiteFields>[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
   const [lastWorkDescription, setLastWorkDescription] = useState(initialWorkDescription);
   const [selectedWork, setSelectedWork] = useState('');
 
@@ -66,6 +67,7 @@ export default function StampCard({
   const handleStamp = async (type: 'IN' | 'OUT', workDescription: string) => {
     setIsLoading(true);
     setError('');
+    setWarning('');
     const opts: PositionOptions = {
       enableHighAccuracy: true,
       maximumAge: 0,
@@ -82,46 +84,7 @@ export default function StampCard({
           setIsLoading(false);
           return;
         }
-        if (typeof accuracy === 'number' && accuracy > 100) {
-          setError('位置精度が不十分（>100m）です。');
-          setIsLoading(false);
-          return;
-        }
-
-        const nearestSite = findNearestSite(latitude, longitude, sites);
-        const decisionThreshold = 300;
-        const haversineDistance = (
-          lat1: number,
-          lon1: number,
-          lat2: number,
-          lon2: number,
-        ) => {
-          const R = 6371e3;
-          const toRad = (deg: number) => (deg * Math.PI) / 180;
-          const dLat = toRad(lat2 - lat1);
-          const dLon = toRad(lon2 - lon1);
-          const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(toRad(lat1)) *
-              Math.cos(toRad(lat2)) *
-              Math.sin(dLon / 2) *
-              Math.sin(dLon / 2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          return R * c;
-        };
-        const distanceToSite = nearestSite
-          ? haversineDistance(
-              latitude,
-              longitude,
-              nearestSite.fields.lat,
-              nearestSite.fields.lon,
-            )
-          : Number.POSITIVE_INFINITY;
-        if (distanceToSite > decisionThreshold) {
-          setError('現在地と登録拠点の距離が大きいため打刻を中断しました。');
-          setIsLoading(false);
-          return;
-        }
+        const decidedSite = findNearestSite(latitude, longitude, sites);
 
         try {
           const response = await fetch('/api/stamp', {
@@ -135,15 +98,24 @@ export default function StampCard({
               accuracy,
               type,
               positionTimestamp,
-              distanceToSite,
-              decisionThreshold,
               clientDecision: 'auto',
-              siteId: nearestSite?.fields.siteId,
+              siteId: decidedSite?.fields.siteId,
             }),
           });
+          const data = await response.json();
+          const warnings: string[] = [];
+          if (typeof data.accuracy === 'number' && data.accuracy > 100) {
+            warnings.push('位置精度が低い可能性があります（>100m）');
+          }
+          if (
+            typeof data.nearest_distance_m === 'number' &&
+            data.nearest_distance_m > 1000
+          ) {
+            warnings.push('登録拠点から離れている可能性があります（>1km）');
+          }
+          setWarning(warnings.join(' / '));
           if (!response.ok) {
-            const res = await response.json();
-            throw new Error(res.message || `サーバーエラー: ${response.statusText}`);
+            throw new Error(data.message || `サーバーエラー: ${response.statusText}`);
           }
           if (type === 'IN') {
             setStampType('OUT');
@@ -193,6 +165,14 @@ export default function StampCard({
 
   return (
     <div className="flex min-h-[calc(100svh-56px)] w-full flex-col items-center gap-6 p-4 pb-[calc(env(safe-area-inset-bottom)+12px)]">
+      {warning && (
+        <div
+          role="alert"
+          className="w-[90vw] max-w-[560px] rounded bg-yellow-50 p-2 text-sm text-yellow-800"
+        >
+          {warning}
+        </div>
+      )}
       <div className="card w-[90vw] max-w-[560px] mx-auto">
         <div className="space-y-2 text-center">
           <p className="text-lg font-semibold text-gray-800">{userName} さん</p>
