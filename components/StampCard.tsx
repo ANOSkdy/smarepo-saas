@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { SiteFields, WorkTypeFields } from '@/types';
 import { Record } from 'airtable';
 import LogoutButton from './LogoutButton'; // LogoutButtonをインポート
-import { findNearestSite } from '@/lib/geo';
+import { extractGeometry, findNearestSite, pointInGeometry } from '@/lib/geo';
 
 type StampCardProps = {
   initialStampType: 'IN' | 'OUT';
@@ -23,6 +23,86 @@ const CardState = ({ title, message }: { title?: string; message: string }) => (
     </div>
   </div>
 );
+
+type Fix = GeolocationPosition;
+
+const ACCEPT_ACCURACY = 100;
+const SOFT_MAX_WAIT = 2000;
+const HARD_MAX_WAIT = 8000;
+const VERY_BAD_ACC = 300;
+const VERY_OLD_MS = 15000;
+
+function getOnce(timeoutMs: number): Promise<Fix> {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: timeoutMs,
+    });
+  });
+}
+
+function bestByAccuracy(list: Fix[]): Fix {
+  return [...list].sort(
+    (a, b) => (a.coords.accuracy ?? Number.POSITIVE_INFINITY) - (b.coords.accuracy ?? Number.POSITIVE_INFINITY),
+  )[0];
+}
+
+function watchForBetter(opts: { limitMs: number; earlyStop: (p: Fix) => boolean }): Promise<Fix | null> {
+  return new Promise((resolve) => {
+    const samples: Fix[] = [];
+    let settled = false;
+    let watchId = 0;
+    const finish = (result: Fix | null) => {
+      if (settled) return;
+      settled = true;
+      navigator.geolocation.clearWatch(watchId);
+      resolve(result);
+    };
+    watchId = navigator.geolocation.watchPosition(
+      (p) => {
+        samples.push(p);
+        if (opts.earlyStop(p)) {
+          finish(samples.length ? bestByAccuracy(samples) : p);
+        }
+      },
+      () => {
+        /* ignore errors */
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: opts.limitMs },
+    );
+    setTimeout(() => {
+      finish(samples.length ? bestByAccuracy(samples) : null);
+    }, opts.limitMs);
+  });
+}
+
+async function getBestPositionAdaptive(
+  isInsidePolygon: (lat: number, lon: number) => boolean,
+): Promise<Fix> {
+  const first = await getOnce(10000);
+  const a1 = first.coords.accuracy ?? Number.POSITIVE_INFINITY;
+  const age1 = Date.now() - first.timestamp;
+  const lat1 = first.coords.latitude;
+  const lon1 = first.coords.longitude;
+
+  if (isInsidePolygon(lat1, lon1)) return first;
+  if (a1 <= ACCEPT_ACCURACY && age1 <= 10000) return first;
+
+  const budget = a1 > VERY_BAD_ACC && age1 > VERY_OLD_MS ? HARD_MAX_WAIT : SOFT_MAX_WAIT;
+
+  const improved = await watchForBetter({
+    limitMs: budget,
+    earlyStop: (p) => {
+      const acc = p.coords.accuracy ?? Number.POSITIVE_INFINITY;
+      const age = Date.now() - p.timestamp;
+      const inside = isInsidePolygon(p.coords.latitude, p.coords.longitude);
+      return inside || acc <= ACCEPT_ACCURACY || age <= 5000;
+    },
+  });
+
+  return improved ?? first;
+}
 
 export default function StampCard({
   initialStampType,
@@ -68,74 +148,81 @@ export default function StampCard({
     setIsLoading(true);
     setError('');
     setWarning('');
-    const opts: PositionOptions = {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 10000,
-    };
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude, accuracy } = position.coords;
-        const positionTimestamp = position.timestamp;
-        const ageMs = Date.now() - positionTimestamp;
-        if (ageMs > 10_000) {
-          setError('位置情報が古いため打刻を中断しました。');
-          setIsLoading(false);
-          return;
-        }
-        const decidedSite = findNearestSite(latitude, longitude, sites);
-
+    try {
+      const position = await getBestPositionAdaptive((lat, lon) => {
         try {
-          const response = await fetch('/api/stamp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              machineId,
-              workDescription,
-              lat: latitude,
-              lon: longitude,
-              accuracy,
-              type,
-              positionTimestamp,
-              clientDecision: 'auto',
-              siteId: decidedSite?.fields.siteId,
-            }),
+          return sites.some((site) => {
+            const geom = extractGeometry(site.fields.polygon_geojson ?? null);
+            return geom ? pointInGeometry(lat, lon, geom) : false;
           });
-          const data = await response.json();
-          const warnings: string[] = [];
-          if (typeof data.accuracy === 'number' && data.accuracy > 100) {
-            warnings.push('位置精度が低い可能性があります（>100m）');
-          }
-          if (
-            typeof data.nearest_distance_m === 'number' &&
-            data.nearest_distance_m > 1000
-          ) {
-            warnings.push('登録拠点から離れている可能性があります（>1km）');
-          }
-          setWarning(warnings.join(' / '));
-          if (!response.ok) {
-            throw new Error(data.message || `サーバーエラー: ${response.statusText}`);
-          }
-          if (type === 'IN') {
-            setStampType('OUT');
-            setLastWorkDescription(workDescription);
-          } else {
-            setStampType('COMPLETED');
-          }
-        } catch (err) {
-          const message = err instanceof Error ? err.message : '通信に失敗しました。';
-          setError(message);
-        } finally {
-          setIsLoading(false);
+        } catch {
+          return false;
         }
-      },
-      (geoError) => {
-        setError(`位置情報の取得に失敗しました: ${geoError.message}`);
+      });
+
+      const { latitude, longitude, accuracy } = position.coords;
+      const positionTimestamp = position.timestamp;
+      const ageMs = Date.now() - positionTimestamp;
+      const warnAges: string[] = [];
+      if (ageMs > 10_000) {
+        warnAges.push('位置情報が古い可能性があります（>10秒）');
+      }
+      const decidedSite = findNearestSite(latitude, longitude, sites);
+
+      try {
+        const response = await fetch('/api/stamp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            machineId,
+            workDescription,
+            lat: latitude,
+            lon: longitude,
+            accuracy,
+            type,
+            positionTimestamp,
+            clientDecision: 'auto',
+            siteId: decidedSite?.fields.siteId,
+          }),
+        });
+        const data = await response.json();
+        const warnings: string[] = warnAges.slice();
+        if (typeof data.accuracy === 'number' && data.accuracy > 100) {
+          warnings.push('位置精度が低い可能性があります（>100m）');
+        }
+        if (
+          typeof data.nearest_distance_m === 'number' &&
+          data.nearest_distance_m > 1000
+        ) {
+          warnings.push('録拠点から離れている可能性があります（>1km）');
+        }
+        setWarning(warnings.join(' / '));
+        if (!response.ok) {
+          throw new Error(data.message || `サーバーエラー: ${response.statusText}`);
+        }
+        if (type === 'IN') {
+          setStampType('OUT');
+          setLastWorkDescription(workDescription);
+        } else {
+          setStampType('COMPLETED');
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '通信に失敗しました。';
+        setError(message);
+      } finally {
         setIsLoading(false);
-      },
-      opts,
-    );
+      }
+    } catch (geoError) {
+      const message =
+        geoError instanceof Error
+          ? geoError.message
+          : typeof geoError === 'string'
+            ? geoError
+            : '不明なエラーが発生しました。';
+      setError(`位置情報の取得に失敗しました: ${message}`);
+      setIsLoading(false);
+    }
   };
 
   const handleCheckIn = (e: React.FormEvent<HTMLFormElement>) => {

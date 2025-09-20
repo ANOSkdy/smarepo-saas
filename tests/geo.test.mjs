@@ -11,7 +11,7 @@ execSync(
   { cwd: root, stdio: 'inherit' }
 );
 
-const { findNearestSiteDetailed, pointInGeometry } = await import('./dist/lib/geo.js');
+const { extractGeometry, findNearestSiteDetailed, pointInGeometry } = await import('./dist/lib/geo.js');
 
 test('findNearestSite prioritizes polygon containment', () => {
   const polygon = {
@@ -78,4 +78,30 @@ test('pointInGeometry excludes holes', () => {
     ],
   };
   assert.strictEqual(pointInGeometry(1, 1, polygon), false);
+});
+
+test('extractGeometry resolves FeatureCollection polygons', () => {
+  const raw = JSON.stringify({
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [0, 0],
+              [1, 0],
+              [1, 1],
+              [0, 1],
+              [0, 0],
+            ],
+          ],
+        },
+      },
+    ],
+  });
+  const geometry = extractGeometry(raw);
+  assert(geometry);
+  assert.strictEqual(geometry.type, 'Polygon');
 });
