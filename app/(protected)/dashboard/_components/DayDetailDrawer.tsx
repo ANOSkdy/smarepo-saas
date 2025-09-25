@@ -191,7 +191,7 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
                     {sessionGroups.map((group) => (
                       <div key={group.userName} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
                         <div className="flex items-center justify-between">
-                          <p className="text-[15px] font-semibold text-gray-900 sm:text-base">{group.userName}</p>
+                          <p className="text-[15px] font-semibold text-gray-900 !text-black sm:text-base">{group.userName}</p>
                         </div>
                         <div className="mt-2 divide-y divide-gray-100">
                           {group.items.map((session, index) => {
