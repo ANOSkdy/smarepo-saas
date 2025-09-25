@@ -156,7 +156,6 @@ export default function ActivityCalendar() {
             const displaySites = siteNames.slice(0, 3);
             const punches = summary?.punches ?? 0;
             const hours = summary?.hours ?? 0;
-            const sessions = summary?.sessions ?? 0;
             const hasActivity = punches > 0 || hours > 0;
 
             return (
@@ -174,23 +173,10 @@ export default function ActivityCalendar() {
                   aria-label={`${date}の稼働詳細`}
                 >
                   <div className="flex flex-col gap-2">
-                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                      <span className="text-[13px] font-medium text-gray-800 sm:text-sm">{dayNumber}</span>
-                      {sessions > 0 ? (
-                        <span className="inline-flex items-center justify-center rounded-full bg-blue-50 px-2 py-[2px] text-[11px] font-semibold text-blue-600 sm:text-xs">
-                          {sessions} ses
-                        </span>
-                      ) : null}
-                    </div>
+                    <span className="text-[13px] font-medium text-gray-800 sm:text-sm">{dayNumber}</span>
                     <div className="text-xs text-primary/80 site-names">
                       {displaySites.length > 0 ? displaySites.join(' / ') : '現場情報なし'}
                     </div>
-                    {hasActivity ? (
-                      <div className="mt-auto text-xs text-gray-600">
-                        <span className="font-medium text-gray-700">{hours.toFixed(2)}h</span>
-                        <span className="ml-1 text-gray-500">/{punches}打刻</span>
-                      </div>
-                    ) : null}
                   </div>
                 </button>
               </div>

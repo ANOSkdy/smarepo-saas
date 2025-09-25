@@ -24,7 +24,7 @@
 
 .site-names {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 2; /* 現場名だけの簡潔表示を担保 */
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-all;

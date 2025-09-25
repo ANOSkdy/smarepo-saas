@@ -28,12 +28,15 @@ export type CalendarDaySummary = {
   hours: number;
 };
 
+export type SessionStatus = '完了' | '稼働中';
+
 export type SessionDetail = {
   userName: string;
   siteName: string | null;
   clockInAt: string;
-  clockOutAt: string;
-  hours: number;
+  clockOutAt?: string;
+  hours?: number;
+  status: SessionStatus;
 };
 
 const RETRY_LIMIT = 3;
@@ -211,46 +214,59 @@ function roundHours(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+function createOpenSession(source: NormalizedLog): SessionDetail {
+  return {
+    userName: source.userName ?? '未登録ユーザー',
+    siteName: source.siteName ?? null,
+    clockInAt: formatJstTime(source.timestampMs),
+    status: '稼働中',
+  };
+}
+
 function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
   const sorted = [...logs].sort((a, b) => a.timestampMs - b.timestampMs);
-  const stacks = new Map<string, NormalizedLog[]>();
+  const openSessions = new Map<string, NormalizedLog | null>();
   const sessions: SessionDetail[] = [];
 
   for (const log of sorted) {
     const userKey = log.userId ?? log.userName ?? 'unknown-user';
+    const currentOpen = openSessions.get(userKey) ?? null;
+
     if (log.type === 'IN') {
-      const stack = stacks.get(userKey) ?? [];
-      stack.push(log);
-      stacks.set(userKey, stack);
+      if (currentOpen) {
+        console.warn('[calendar][pairing] consecutive IN punch treated as open session', userKey, currentOpen.id);
+        sessions.push(createOpenSession(currentOpen));
+      }
+      openSessions.set(userKey, log);
       continue;
     }
 
-    const stack = stacks.get(userKey);
-    if (!stack || stack.length === 0) {
+    if (!currentOpen) {
       console.warn('[calendar][pairing] unmatched OUT punch', userKey, log.id);
       continue;
     }
-    const clockIn = stack.shift();
-    if (!clockIn) {
-      continue;
-    }
-    if (log.timestampMs <= clockIn.timestampMs) {
+
+    if (log.timestampMs <= currentOpen.timestampMs) {
       console.warn('[calendar][pairing] non positive duration', userKey, log.id);
       continue;
     }
-    const durationHours = (log.timestampMs - clockIn.timestampMs) / (1000 * 60 * 60);
+
+    const durationHours = (log.timestampMs - currentOpen.timestampMs) / (1000 * 60 * 60);
     sessions.push({
-      userName: clockIn.userName ?? log.userName ?? '未登録ユーザー',
-      siteName: clockIn.siteName ?? log.siteName ?? null,
-      clockInAt: formatJstTime(clockIn.timestampMs),
+      userName: currentOpen.userName ?? log.userName ?? '未登録ユーザー',
+      siteName: currentOpen.siteName ?? log.siteName ?? null,
+      clockInAt: formatJstTime(currentOpen.timestampMs),
       clockOutAt: formatJstTime(log.timestampMs),
       hours: roundHours(durationHours),
+      status: '完了',
     });
+    openSessions.set(userKey, null);
   }
 
-  for (const [userKey, stack] of stacks) {
-    if (stack.length > 0) {
-      console.warn('[calendar][pairing] unmatched IN punch', userKey, stack[0]?.id);
+  for (const [userKey, pending] of openSessions) {
+    if (pending) {
+      console.warn('[calendar][pairing] unmatched IN punch', userKey, pending.id);
+      sessions.push(createOpenSession(pending));
     }
   }
 
@@ -269,7 +285,8 @@ export function summariseMonth(logs: NormalizedLog[]): CalendarDaySummary[] {
   const summaries: CalendarDaySummary[] = [];
   for (const [date, items] of grouped) {
     const sessions = buildSessionDetails(items);
-    const hours = sessions.reduce((total, session) => total + session.hours, 0);
+    const completedSessions = sessions.filter((session) => session.status === '完了');
+    const hours = completedSessions.reduce((total, session) => total + (session.hours ?? 0), 0);
     const sites = Array.from(
       new Set(items.map((item) => item.siteName).filter((name): name is string => Boolean(name))),
     );
@@ -277,7 +294,7 @@ export function summariseMonth(logs: NormalizedLog[]): CalendarDaySummary[] {
       date,
       sites,
       punches: items.length,
-      sessions: sessions.length,
+      sessions: completedSessions.length,
       hours: roundHours(hours),
     });
   }
@@ -286,7 +303,6 @@ export function summariseMonth(logs: NormalizedLog[]): CalendarDaySummary[] {
 }
 
 export function buildDayDetail(logs: NormalizedLog[]): { sessions: SessionDetail[] } {
-  const sorted = [...logs].sort((a, b) => a.timestampMs - b.timestampMs);
-  const sessions = buildSessionDetails(sorted);
+  const sessions = buildSessionDetails(logs);
   return { sessions };
 }

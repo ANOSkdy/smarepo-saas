@@ -2,10 +2,14 @@
 
 import Link from 'next/link';
 
+const DEFAULT_MACHINE_ID = process.env.NEXT_PUBLIC_DEFAULT_MACHINE_ID ?? '1001';
+
 export default function NfcLinkButton() {
+  const qs = new URLSearchParams({ machineid: DEFAULT_MACHINE_ID }).toString();
+
   return (
     <Link
-      href="/nfc"
+      href={`/nfc?${qs}`}
       prefetch
       className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
       aria-label="打刻ページへ"

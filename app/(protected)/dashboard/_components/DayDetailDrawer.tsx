@@ -6,8 +6,9 @@ type SessionRecord = {
   userName: string;
   siteName: string | null;
   clockInAt: string;
-  clockOutAt: string;
-  hours: number;
+  clockOutAt?: string | null;
+  hours?: number | null;
+  status: '完了' | '稼働中';
 };
 
 type DayDetailResponse = {
@@ -166,27 +167,32 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
                   <p className="mt-2 text-sm text-gray-500">この日にペアリングされたセッションはありません。</p>
                 ) : (
                   <ul className="mt-3 space-y-3">
-                    {detail.sessions.map((session, index) => (
-                      <li
-                        key={`${session.userName}-${session.clockInAt}-${index}`}
-                        className="rounded-2xl border border-gray-100 p-4 shadow-sm sm:p-5"
-                      >
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">{session.userName}</p>
-                            <p className="text-xs text-gray-500">{session.siteName ?? '現場未設定'}</p>
+                    {detail.sessions.map((session, index) => {
+                      const statusColor = session.status === '稼働中' ? 'text-orange-600' : 'text-blue-600';
+                      return (
+                        <li
+                          key={`${session.userName}-${session.clockInAt}-${index}`}
+                          className="rounded-2xl border border-gray-100 p-4 shadow-sm sm:p-5"
+                        >
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{session.userName}</p>
+                              <p className="text-xs text-gray-500">{session.siteName ?? '現場未設定'}</p>
+                            </div>
+                            <span className={`text-xs font-semibold ${statusColor}`}>{session.status}</span>
                           </div>
-                          <div className="text-xs text-gray-500 sm:text-sm">
-                            <p>
-                              {session.clockInAt}
-                              <span className="mx-1 text-gray-400">→</span>
-                              {session.clockOutAt}
+                          <div className="mt-2 text-sm text-gray-600 sm:text-base">
+                            {session.clockInAt}
+                            {session.clockOutAt ? <span className="ml-1">→ {session.clockOutAt}</span> : null}
+                          </div>
+                          {typeof session.hours === 'number' ? (
+                            <p className="mt-1 text-sm font-medium text-blue-600 sm:text-base">
+                              {session.hours.toFixed(2)}時間
                             </p>
-                            <p className="mt-1 text-sm font-medium text-blue-600 sm:text-base">{session.hours.toFixed(2)}時間</p>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </section>

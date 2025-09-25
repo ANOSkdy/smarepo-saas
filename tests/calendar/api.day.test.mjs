@@ -179,6 +179,18 @@ test('day API returns paired sessions without punches detail', async () => {
       workType: null,
       note: null,
     },
+    {
+      id: 'log-6',
+      type: 'IN',
+      timestamp: '2025-09-01T12:00:00.000Z',
+      timestampMs: Date.parse('2025-09-01T12:00:00.000Z'),
+      userId: 'user-1',
+      userName: 'suzuki',
+      siteId: 'site-1',
+      siteName: '札幌第一',
+      workType: '溶接',
+      note: null,
+    },
   ];
   const getLogsMock = mock.fn(async () => baseLogs);
   const { GET } = await importRouteWith({ auth: authMock, getLogs: getLogsMock });
@@ -188,13 +200,20 @@ test('day API returns paired sessions without punches detail', async () => {
   assert.strictEqual(body.date, '2025-09-01');
   assert.ok(!('punches' in body));
   assert.ok(Array.isArray(body.sessions));
-  assert.strictEqual(body.sessions.length, 2);
+  assert.strictEqual(body.sessions.length, 3);
   const firstSession = body.sessions[0];
   assert.strictEqual(firstSession.userName, 'suzuki');
   assert.strictEqual(firstSession.clockInAt, '09:00');
   assert.strictEqual(firstSession.clockOutAt, '16:30');
   assert.strictEqual(firstSession.hours, 7.5);
+  assert.strictEqual(firstSession.status, '完了');
   const secondSession = body.sessions[1];
   assert.strictEqual(secondSession.userName, 'sato');
   assert.strictEqual(secondSession.hours, 7);
+  assert.strictEqual(secondSession.status, '完了');
+  const openSession = body.sessions.find((session) => session.status === '稼働中');
+  assert.ok(openSession, 'open session should be present');
+  assert.strictEqual('clockOutAt' in openSession, false);
+  assert.strictEqual('hours' in openSession, false);
+  assert.strictEqual(openSession.clockInAt, '21:00');
 });
