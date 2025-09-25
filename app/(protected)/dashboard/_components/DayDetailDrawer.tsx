@@ -8,7 +8,12 @@ type SessionRecord = {
   clockInAt: string;
   clockOutAt?: string | null;
   hours?: number | null;
-  status: '完了' | '稼働中';
+  status: '正常' | '稼働中';
+};
+
+type SessionGroup = {
+  userName: string;
+  items: SessionRecord[];
 };
 
 type DayDetailResponse = {
@@ -98,6 +103,22 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
   }, [open]);
 
   const headerLabel = useMemo(() => formatDateLabel(detail?.date ?? date ?? null), [date, detail?.date]);
+  const sessionGroups = useMemo<SessionGroup[]>(() => {
+    if (!detail?.sessions) {
+      return [];
+    }
+    const grouped = new Map<string, SessionGroup>();
+    for (const session of detail.sessions) {
+      const key = session.userName || '未登録ユーザー';
+      const current = grouped.get(key);
+      if (current) {
+        current.items.push(session);
+      } else {
+        grouped.set(key, { userName: key, items: [session] });
+      }
+    }
+    return Array.from(grouped.values());
+  }, [detail?.sessions]);
 
   if (!open) {
     return null;
@@ -163,37 +184,39 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
             <div className="space-y-4">
               <section>
                 <h4 className="text-sm font-semibold text-gray-800">セッション概要</h4>
-                {detail.sessions.length === 0 ? (
+                {sessionGroups.length === 0 ? (
                   <p className="mt-2 text-sm text-gray-500">この日にペアリングされたセッションはありません。</p>
                 ) : (
-                  <ul className="mt-3 space-y-3">
-                    {detail.sessions.map((session, index) => {
-                      const statusColor = session.status === '稼働中' ? 'text-orange-600' : 'text-blue-600';
-                      return (
-                        <li
-                          key={`${session.userName}-${session.clockInAt}-${index}`}
-                          className="rounded-2xl border border-gray-100 p-4 shadow-sm sm:p-5"
-                        >
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">{session.userName}</p>
-                              <p className="text-xs text-gray-500">{session.siteName ?? '現場未設定'}</p>
-                            </div>
-                            <span className={`text-xs font-semibold ${statusColor}`}>{session.status}</span>
-                          </div>
-                          <div className="mt-2 text-sm text-gray-600 sm:text-base">
-                            {session.clockInAt}
-                            {session.clockOutAt ? <span className="ml-1">→ {session.clockOutAt}</span> : null}
-                          </div>
-                          {typeof session.hours === 'number' ? (
-                            <p className="mt-1 text-sm font-medium text-blue-600 sm:text-base">
-                              {session.hours.toFixed(2)}時間
-                            </p>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <div className="mt-3 space-y-3">
+                    {sessionGroups.map((group) => (
+                      <div key={group.userName} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[15px] font-semibold text-gray-900 !text-black sm:text-base">{group.userName}</p>
+                        </div>
+                        <div className="mt-2 divide-y divide-gray-100">
+                          {group.items.map((session, index) => {
+                            const statusClass = session.status === '稼働中' ? 'text-orange-600' : 'text-primary';
+                            return (
+                              <div
+                                key={`${session.userName}-${session.clockInAt}-${index}`}
+                                className="py-2 first:pt-0 last:pb-0"
+                              >
+                                <p className="text-xs text-gray-800 sm:text-sm">{session.siteName ?? '現場未設定'}</p>
+                                <div className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-gray-900">
+                                  <span>
+                                    {session.clockInAt}
+                                    {session.clockOutAt ? ` → ${session.clockOutAt}` : ''}
+                                  </span>
+                                  {typeof session.hours === 'number' ? <span>（{session.hours}時間）</span> : null}
+                                  <span className={`text-xs sm:text-sm ${statusClass}`}>{session.status}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </section>
             </div>
