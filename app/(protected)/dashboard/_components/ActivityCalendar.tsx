@@ -1,0 +1,190 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import CalendarHeader from './CalendarHeader';
+import DayDetailDrawer from './DayDetailDrawer';
+import './activity-calendar.css';
+
+type CalendarDay = {
+  date: string;
+  sites: string[];
+  punches: number;
+  sessions: number;
+  hours: number;
+};
+
+type CalendarResponse = {
+  year: number;
+  month: number;
+  days: CalendarDay[];
+};
+
+type FetchState = 'idle' | 'loading' | 'success' | 'error';
+
+const JST_OFFSET = 9 * 60 * 60 * 1000;
+
+function getTodayInfo() {
+  const now = new Date();
+  const jst = new Date(now.getTime() + JST_OFFSET);
+  return {
+    year: jst.getUTCFullYear(),
+    month: jst.getUTCMonth() + 1,
+    date: `${jst.getUTCFullYear()}-${String(jst.getUTCMonth() + 1).padStart(2, '0')}-${String(
+      jst.getUTCDate(),
+    ).padStart(2, '0')}`,
+  };
+}
+
+function createCalendarMatrix(year: number, month: number) {
+  const firstDay = new Date(Date.UTC(year, month - 1, 1));
+  const startWeekday = firstDay.getUTCDay();
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const weeks: (string | null)[][] = [];
+  let currentDay = 1;
+
+  while (currentDay <= daysInMonth) {
+    const week: (string | null)[] = Array.from({ length: 7 }, () => null);
+    for (let day = 0; day < 7 && currentDay <= daysInMonth; day += 1) {
+      if (weeks.length === 0 && day < startWeekday) {
+        continue;
+      }
+      const date = `${year}-${String(month).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`;
+      week[day] = date;
+      currentDay += 1;
+    }
+    weeks.push(week);
+  }
+
+  if (weeks.length < 6) {
+    while (weeks.length < 6) {
+      weeks.push(Array.from({ length: 7 }, () => null));
+    }
+  }
+
+  return weeks;
+}
+
+export default function ActivityCalendar() {
+  const today = useMemo(() => getTodayInfo(), []);
+  const [year, setYear] = useState(today.year);
+  const [month, setMonth] = useState(today.month);
+  const [data, setData] = useState<CalendarResponse | null>(null);
+  const [state, setState] = useState<FetchState>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const fetchCalendar = useCallback(async () => {
+    setState('loading');
+    setErrorMessage('');
+    try {
+      const params = new URLSearchParams({ year: String(year), month: String(month) });
+      const response = await fetch(`/api/calendar/month?${params.toString()}`, {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
+      if (!response.ok) {
+        throw new Error(`Calendar API error: ${response.status}`);
+      }
+      const payload = (await response.json()) as CalendarResponse;
+      setData(payload);
+      setState('success');
+    } catch (error) {
+      console.error('Failed to load calendar summary', error);
+      setErrorMessage('カレンダー情報の取得に失敗しました。再読み込みしてください。');
+      setState('error');
+    }
+  }, [month, year]);
+
+  useEffect(() => {
+    void fetchCalendar();
+  }, [fetchCalendar]);
+
+  const matrix = useMemo(() => createCalendarMatrix(year, month), [year, month]);
+  const dayMap = useMemo(() => {
+    const map = new Map<string, CalendarDay>();
+    if (data?.days) {
+      for (const day of data.days) {
+        map.set(day.date, day);
+      }
+    }
+    return map;
+  }, [data]);
+
+  const navigateMonth = (offset: number) => {
+    setData(null);
+    const base = new Date(Date.UTC(year, month - 1 + offset, 1));
+    setYear(base.getUTCFullYear());
+    setMonth(base.getUTCMonth() + 1);
+  };
+
+  return (
+    <div className="space-y-6">
+      <CalendarHeader
+        year={year}
+        month={month}
+        onPrev={() => navigateMonth(-1)}
+        onNext={() => navigateMonth(1)}
+        onReset={() => {
+          setYear(today.year);
+          setMonth(today.month);
+        }}
+      />
+      {state === 'error' ? (
+        <div
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          role="alert"
+        >
+          {errorMessage}
+        </div>
+      ) : null}
+      <div className="overflow-hidden rounded-2xl border border-gray-100">
+        <div
+          className="grid gap-2 p-3"
+          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}
+          role="grid"
+          aria-label="月次稼働カレンダー"
+        >
+          {matrix.flat().map((date, index) => {
+            if (!date) {
+              return <div key={`empty-${index}`} className="calendar-cell empty" aria-hidden />;
+            }
+            const summary = dayMap.get(date);
+            const isToday = date === today.date;
+            const dayNumber = Number.parseInt(date.split('-')[2] ?? '0', 10);
+            const siteNames = summary?.sites ?? [];
+            const displaySites = siteNames.slice(0, 3);
+            const punches = summary?.punches ?? 0;
+            const hours = summary?.hours ?? 0;
+            const hasActivity = punches > 0 || hours > 0;
+
+            return (
+              <div key={date} role="gridcell" className="calendar-cell-wrapper">
+                <button
+                  type="button"
+                  className={`calendar-cell ${hasActivity ? 'active' : ''} ${isToday ? 'today' : ''}`}
+                  onClick={() => setSelectedDate(date)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setSelectedDate(date);
+                    }
+                  }}
+                  aria-label={`${date}の稼働詳細`}
+                >
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[13px] font-medium text-gray-800 sm:text-sm">{dayNumber}</span>
+                    <div className="text-xs text-primary/80 site-names">
+                      {displaySites.length > 0 ? displaySites.join(' / ') : '現場情報なし'}
+                    </div>
+                  </div>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <DayDetailDrawer date={selectedDate} open={Boolean(selectedDate)} onClose={() => setSelectedDate(null)} />
+    </div>
+  );
+}

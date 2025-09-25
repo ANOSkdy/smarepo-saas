@@ -1,0 +1,37 @@
+.calendar-cell-wrapper {
+  @apply h-full;
+}
+
+.calendar-cell {
+  @apply rounded-2xl border border-transparent bg-white p-2 text-left text-[12px] text-gray-600 transition shadow-sm;
+}
+
+.calendar-cell.active {
+  @apply border-blue-100 bg-blue-50/30;
+}
+
+.calendar-cell.today {
+  @apply border-blue-300 bg-blue-50;
+}
+
+.calendar-cell:focus-visible {
+  @apply outline-none ring-2 ring-blue-200 ring-offset-2;
+}
+
+.calendar-cell.empty {
+  @apply h-28 rounded-2xl bg-gray-50;
+}
+
+.site-names {
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* 現場名だけの簡潔表示を担保 */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+@media (min-width: 640px) {
+  .calendar-cell {
+    @apply p-3 text-sm;
+  }
+}
