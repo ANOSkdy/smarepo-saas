@@ -43,8 +43,8 @@ export async function GET(req: NextRequest) {
     }
 
     const logs = await getLogsBetween(range);
-    const detail = buildDayDetail(logs);
-    return NextResponse.json({ date, ...detail });
+    const { sessions } = buildDayDetail(logs);
+    return NextResponse.json({ date, sessions });
   } catch (error) {
     console.error('[calendar][day] failed to fetch day detail', error);
     return errorResponse('INTERNAL_ERROR', 500);

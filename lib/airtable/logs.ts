@@ -1,6 +1,7 @@
 import { Record as AirtableRecord } from 'airtable';
 import { logsTable } from '@/lib/airtable';
 import type { LogFields } from '@/types';
+import { getUsersMap } from './users';
 import { AIRTABLE_PAGE_SIZE, JST_OFFSET, LOG_FIELDS } from './schema';
 
 type LogType = 'IN' | 'OUT';
@@ -12,6 +13,7 @@ export type NormalizedLog = {
   timestampMs: number;
   userId: string | null;
   userName: string | null;
+  userLookupKeys: string[];
   siteId: string | null;
   siteName: string | null;
   workType: string | null;
@@ -24,15 +26,6 @@ export type CalendarDaySummary = {
   punches: number;
   sessions: number;
   hours: number;
-};
-
-export type PunchDetail = {
-  timestamp: string;
-  type: LogType;
-  userName: string;
-  siteName: string | null;
-  workType: string | null;
-  note: string | null;
 };
 
 export type SessionDetail = {
@@ -76,6 +69,7 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
   const userLinks = Array.isArray(fields[LOG_FIELDS.user])
     ? (fields[LOG_FIELDS.user] as readonly string[])
     : [];
+  const userIdField = typeof fields['userId'] === 'string' ? (fields['userId'] as string) : null;
   const siteLinks = Array.isArray(fields[LOG_FIELDS.site])
     ? (fields[LOG_FIELDS.site] as readonly string[])
     : [];
@@ -96,6 +90,26 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
     ? (fields[LOG_FIELDS.workDescription] as string)
     : null;
   const note = typeof fields[LOG_FIELDS.note] === 'string' ? (fields[LOG_FIELDS.note] as string) : null;
+  const usernameField = typeof fields[LOG_FIELDS.username] === 'string' ? (fields[LOG_FIELDS.username] as string) : null;
+  const userEmailField = (() => {
+    const rawEmail = fields['userEmail'] ?? fields['email'];
+    return typeof rawEmail === 'string' ? rawEmail : null;
+  })();
+
+  const lookupKeys = new Set<string>();
+  if (userLinks.length > 0) {
+    lookupKeys.add(String(userLinks[0]));
+  }
+  if (userIdField) {
+    lookupKeys.add(userIdField);
+  }
+  if (usernameField) {
+    lookupKeys.add(usernameField);
+  }
+  if (userEmailField) {
+    lookupKeys.add(userEmailField);
+    lookupKeys.add(userEmailField.toLowerCase());
+  }
 
   return {
     id: record.id,
@@ -104,6 +118,7 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
     timestampMs,
     userId: userLinks.length > 0 ? String(userLinks[0]) : null,
     userName,
+    userLookupKeys: Array.from(lookupKeys),
     siteId: siteLinks.length > 0 ? String(siteLinks[0]) : null,
     siteName,
     workType,
@@ -127,10 +142,43 @@ export async function getLogsBetween(params: { from: Date; to: Date }): Promise<
       .all(),
   );
 
-  return records
+  const logs = records
     .map((record) => toNormalizedLog(record))
     .filter((log): log is NormalizedLog => Boolean(log))
     .sort((a, b) => a.timestampMs - b.timestampMs);
+
+  if (logs.length === 0) {
+    return logs;
+  }
+
+  const usersMap = await getUsersMap();
+
+  return logs.map((log) => {
+    const candidates = new Set<string>();
+    if (log.userId) {
+      candidates.add(log.userId);
+      candidates.add(log.userId.toLowerCase());
+    }
+    for (const key of log.userLookupKeys) {
+      if (!key) continue;
+      candidates.add(String(key));
+      candidates.add(String(key).toLowerCase());
+    }
+
+    let resolvedName = log.userName;
+    for (const key of candidates) {
+      const match = usersMap.get(key);
+      if (match?.name) {
+        resolvedName = match.name;
+        break;
+      }
+    }
+
+    return {
+      ...log,
+      userName: resolvedName ?? '未登録ユーザー',
+    };
+  });
 }
 
 function toJstParts(timestampMs: number) {
@@ -157,11 +205,6 @@ function formatJstDate(timestampMs: number) {
 function formatJstTime(timestampMs: number) {
   const { hour, minute } = toJstParts(timestampMs);
   return `${pad(hour)}:${pad(minute)}`;
-}
-
-function formatJstIso(timestampMs: number) {
-  const { year, month, day, hour, minute, second } = toJstParts(timestampMs);
-  return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:${pad(second)}+09:00`;
 }
 
 function roundHours(value: number) {
@@ -242,17 +285,8 @@ export function summariseMonth(logs: NormalizedLog[]): CalendarDaySummary[] {
   return summaries.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
-export function buildDayDetail(logs: NormalizedLog[]): { punches: PunchDetail[]; sessions: SessionDetail[] } {
+export function buildDayDetail(logs: NormalizedLog[]): { sessions: SessionDetail[] } {
   const sorted = [...logs].sort((a, b) => a.timestampMs - b.timestampMs);
   const sessions = buildSessionDetails(sorted);
-  const punches: PunchDetail[] = sorted.map((log) => ({
-    timestamp: formatJstIso(log.timestampMs),
-    type: log.type,
-    userName: log.userName ?? '未登録ユーザー',
-    siteName: log.siteName ?? null,
-    workType: log.workType ?? null,
-    note: log.note ?? null,
-  }));
-
-  return { punches, sessions };
+  return { sessions };
 }

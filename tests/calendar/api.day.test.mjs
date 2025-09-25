@@ -34,6 +34,11 @@ async function loadLogsModule() {
             },
           }),
         },
+        usersTable: {
+          select: () => ({
+            all: async () => [],
+          }),
+        },
       };
     }
     return originalLoad.call(this, request, parent, isMain);
@@ -111,7 +116,7 @@ test('day API validates date format', async () => {
   assert.deepStrictEqual(await response.json(), { error: 'INVALID_DATE' });
 });
 
-test('day API returns punches and paired sessions', async () => {
+test('day API returns paired sessions without punches detail', async () => {
   const authMock = mock.fn(async () => ({ user: { id: 'user-1' } }));
   const baseLogs = [
     {
@@ -181,7 +186,8 @@ test('day API returns punches and paired sessions', async () => {
   assert.strictEqual(response.status, 200);
   const body = await response.json();
   assert.strictEqual(body.date, '2025-09-01');
-  assert.strictEqual(body.punches.length, 5);
+  assert.ok(!('punches' in body));
+  assert.ok(Array.isArray(body.sessions));
   assert.strictEqual(body.sessions.length, 2);
   const firstSession = body.sessions[0];
   assert.strictEqual(firstSession.userName, 'suzuki');

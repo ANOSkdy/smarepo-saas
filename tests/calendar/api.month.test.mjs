@@ -34,6 +34,11 @@ async function loadLogsModule() {
             },
           }),
         },
+        usersTable: {
+          select: () => ({
+            all: async () => [],
+          }),
+        },
       };
     }
     return originalLoad.call(this, request, parent, isMain);
