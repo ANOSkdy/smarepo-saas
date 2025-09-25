@@ -28,7 +28,7 @@ export type CalendarDaySummary = {
   hours: number;
 };
 
-export type SessionStatus = '完了' | '稼働中';
+export type SessionStatus = '正常' | '稼働中';
 
 export type SessionDetail = {
   userName: string;
@@ -258,7 +258,7 @@ function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
       clockInAt: formatJstTime(currentOpen.timestampMs),
       clockOutAt: formatJstTime(log.timestampMs),
       hours: roundHours(durationHours),
-      status: '完了',
+      status: '正常',
     });
     openSessions.set(userKey, null);
   }
@@ -285,7 +285,7 @@ export function summariseMonth(logs: NormalizedLog[]): CalendarDaySummary[] {
   const summaries: CalendarDaySummary[] = [];
   for (const [date, items] of grouped) {
     const sessions = buildSessionDetails(items);
-    const completedSessions = sessions.filter((session) => session.status === '完了');
+    const completedSessions = sessions.filter((session) => session.status === '正常');
     const hours = completedSessions.reduce((total, session) => total + (session.hours ?? 0), 0);
     const sites = Array.from(
       new Set(items.map((item) => item.siteName).filter((name): name is string => Boolean(name))),

@@ -206,11 +206,17 @@ test('day API returns paired sessions without punches detail', async () => {
   assert.strictEqual(firstSession.clockInAt, '09:00');
   assert.strictEqual(firstSession.clockOutAt, '16:30');
   assert.strictEqual(firstSession.hours, 7.5);
-  assert.strictEqual(firstSession.status, '完了');
+  assert.strictEqual(firstSession.status, '正常');
   const secondSession = body.sessions[1];
   assert.strictEqual(secondSession.userName, 'sato');
   assert.strictEqual(secondSession.hours, 7);
-  assert.strictEqual(secondSession.status, '完了');
+  assert.strictEqual(secondSession.status, '正常');
+  const hasClosed = body.sessions.some((session) => session.status === '正常');
+  assert.ok(hasClosed, 'closed session should exist');
+  const hasOpen = body.sessions.some(
+    (session) => session.status === '稼働中' && session.clockInAt && !session.clockOutAt,
+  );
+  assert.ok(hasOpen, 'open session should be present');
   const openSession = body.sessions.find((session) => session.status === '稼働中');
   assert.ok(openSession, 'open session should be present');
   assert.strictEqual('clockOutAt' in openSession, false);
