@@ -1,11 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { SiteFields, WorkTypeFields } from '@/types';
 import { Record } from 'airtable';
 import LogoutButton from './LogoutButton'; // LogoutButtonをインポート
 import { extractGeometry, findNearestSite, pointInGeometry } from '@/lib/geo';
+import {
+  LocationError,
+  describeLocationError,
+  normalizeToLocationError,
+} from '@/lib/location-error';
 
 type StampCardProps = {
   initialStampType: 'IN' | 'OUT';
@@ -24,31 +29,157 @@ const CardState = ({ title, message }: { title?: string; message: string }) => (
   </div>
 );
 
-type Fix = GeolocationPosition;
+type StoredPosition = {
+  lat: number;
+  lon: number;
+  accuracy: number | null;
+  timestamp: number;
+};
+
+type Fix = {
+  coords: {
+    latitude: number;
+    longitude: number;
+    accuracy: number | null;
+  };
+  timestamp: number;
+  source: 'live' | 'cache';
+};
 
 const ACCEPT_ACCURACY = 100;
 const SOFT_MAX_WAIT = 2000;
 const HARD_MAX_WAIT = 8000;
 const VERY_BAD_ACC = 300;
 const VERY_OLD_MS = 15000;
+const GEO_TIMEOUT_MS = 10000;
+const LAST_POSITION_STORAGE_KEY = 'smarepo:lastPosition';
+
+const readStoredPosition = (): StoredPosition | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(LAST_POSITION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredPosition;
+    if (
+      typeof parsed?.lat === 'number' &&
+      typeof parsed?.lon === 'number' &&
+      typeof parsed?.timestamp === 'number'
+    ) {
+      return {
+        lat: parsed.lat,
+        lon: parsed.lon,
+        accuracy: typeof parsed.accuracy === 'number' ? parsed.accuracy : null,
+        timestamp: parsed.timestamp,
+      };
+    }
+  } catch (error) {
+    console.warn('[GeolocationStorage] failed to read', error);
+  }
+  return null;
+};
+
+const writeStoredPosition = (position: Fix) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const payload: StoredPosition = {
+      lat: position.coords.latitude,
+      lon: position.coords.longitude,
+      accuracy: position.coords.accuracy,
+      timestamp: position.timestamp,
+    };
+    window.localStorage.setItem(LAST_POSITION_STORAGE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    console.warn('[GeolocationStorage] failed to write', error);
+  }
+};
+
+const fromStoredPosition = (stored: StoredPosition): Fix => ({
+  coords: {
+    latitude: stored.lat,
+    longitude: stored.lon,
+    accuracy: stored.accuracy,
+  },
+  timestamp: stored.timestamp,
+  source: 'cache',
+});
+
+const normalizeGeolocationPosition = (position: GeolocationPosition): Fix => {
+  const normalized: Fix = {
+    coords: {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      accuracy: typeof position.coords.accuracy === 'number' ? position.coords.accuracy : null,
+    },
+    timestamp: position.timestamp,
+    source: 'live',
+  };
+  writeStoredPosition(normalized);
+  return normalized;
+};
+
+const ensureGeolocationAvailable = (): void => {
+  if (typeof window === 'undefined') {
+    throw new LocationError('unsupported');
+  }
+  if (!('geolocation' in navigator)) {
+    throw new LocationError('unsupported');
+  }
+  if (!window.isSecureContext) {
+    throw new LocationError('insecure');
+  }
+};
 
 function getOnce(timeoutMs: number): Promise<Fix> {
+  try {
+    ensureGeolocationAvailable();
+  } catch (error) {
+    return Promise.reject(error);
+  }
+
   return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: timeoutMs,
-    });
+    let settled = false;
+    const timeoutId = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new LocationError('timeout'));
+    }, timeoutMs);
+
+    const finish = (handler: () => void) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      handler();
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        finish(() => {
+          resolve(normalizeGeolocationPosition(pos));
+        }),
+      (error) =>
+        finish(() => {
+          reject(normalizeToLocationError(error));
+        }),
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: timeoutMs,
+      },
+    );
   });
 }
 
 function bestByAccuracy(list: Fix[]): Fix {
   return [...list].sort(
-    (a, b) => (a.coords.accuracy ?? Number.POSITIVE_INFINITY) - (b.coords.accuracy ?? Number.POSITIVE_INFINITY),
+    (a, b) =>
+      (a.coords.accuracy ?? Number.POSITIVE_INFINITY) - (b.coords.accuracy ?? Number.POSITIVE_INFINITY),
   )[0];
 }
 
 function watchForBetter(opts: { limitMs: number; earlyStop: (p: Fix) => boolean }): Promise<Fix | null> {
+  if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+    return Promise.resolve(null);
+  }
   return new Promise((resolve) => {
     const samples: Fix[] = [];
     let settled = false;
@@ -57,13 +188,15 @@ function watchForBetter(opts: { limitMs: number; earlyStop: (p: Fix) => boolean 
       if (settled) return;
       settled = true;
       navigator.geolocation.clearWatch(watchId);
+      window.clearTimeout(timeoutId);
       resolve(result);
     };
     watchId = navigator.geolocation.watchPosition(
       (p) => {
-        samples.push(p);
-        if (opts.earlyStop(p)) {
-          finish(samples.length ? bestByAccuracy(samples) : p);
+        const normalized = normalizeGeolocationPosition(p);
+        samples.push(normalized);
+        if (opts.earlyStop(normalized)) {
+          finish(samples.length ? bestByAccuracy(samples) : normalized);
         }
       },
       () => {
@@ -71,7 +204,7 @@ function watchForBetter(opts: { limitMs: number; earlyStop: (p: Fix) => boolean 
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: opts.limitMs },
     );
-    setTimeout(() => {
+    const timeoutId = window.setTimeout(() => {
       finish(samples.length ? bestByAccuracy(samples) : null);
     }, opts.limitMs);
   });
@@ -80,28 +213,36 @@ function watchForBetter(opts: { limitMs: number; earlyStop: (p: Fix) => boolean 
 async function getBestPositionAdaptive(
   isInsidePolygon: (lat: number, lon: number) => boolean,
 ): Promise<Fix> {
-  const first = await getOnce(10000);
-  const a1 = first.coords.accuracy ?? Number.POSITIVE_INFINITY;
-  const age1 = Date.now() - first.timestamp;
-  const lat1 = first.coords.latitude;
-  const lon1 = first.coords.longitude;
+  const stored = readStoredPosition();
+  try {
+    const first = await getOnce(GEO_TIMEOUT_MS);
+    const a1 = first.coords.accuracy ?? Number.POSITIVE_INFINITY;
+    const age1 = Date.now() - first.timestamp;
+    const lat1 = first.coords.latitude;
+    const lon1 = first.coords.longitude;
 
-  if (isInsidePolygon(lat1, lon1)) return first;
-  if (a1 <= ACCEPT_ACCURACY && age1 <= 10000) return first;
+    if (isInsidePolygon(lat1, lon1)) return first;
+    if (a1 <= ACCEPT_ACCURACY && age1 <= 10000) return first;
 
-  const budget = a1 > VERY_BAD_ACC && age1 > VERY_OLD_MS ? HARD_MAX_WAIT : SOFT_MAX_WAIT;
+    const budget = a1 > VERY_BAD_ACC && age1 > VERY_OLD_MS ? HARD_MAX_WAIT : SOFT_MAX_WAIT;
 
-  const improved = await watchForBetter({
-    limitMs: budget,
-    earlyStop: (p) => {
-      const acc = p.coords.accuracy ?? Number.POSITIVE_INFINITY;
-      const age = Date.now() - p.timestamp;
-      const inside = isInsidePolygon(p.coords.latitude, p.coords.longitude);
-      return inside || acc <= ACCEPT_ACCURACY || age <= 5000;
-    },
-  });
+    const improved = await watchForBetter({
+      limitMs: budget,
+      earlyStop: (p) => {
+        const acc = p.coords.accuracy ?? Number.POSITIVE_INFINITY;
+        const age = Date.now() - p.timestamp;
+        const inside = isInsidePolygon(p.coords.latitude, p.coords.longitude);
+        return inside || acc <= ACCEPT_ACCURACY || age <= 5000;
+      },
+    });
 
-  return improved ?? first;
+    return improved ?? first;
+  } catch (error) {
+    if (stored) {
+      return fromStoredPosition(stored);
+    }
+    throw normalizeToLocationError(error);
+  }
 }
 
 export default function StampCard({
@@ -118,6 +259,8 @@ export default function StampCard({
   const [warning, setWarning] = useState('');
   const [lastWorkDescription, setLastWorkDescription] = useState(initialWorkDescription);
   const [selectedWork, setSelectedWork] = useState('');
+  const [locationError, setLocationError] = useState<LocationError | null>(null);
+  const [pendingStamp, setPendingStamp] = useState<{ type: 'IN' | 'OUT'; workDescription: string } | null>(null);
 
   const searchParams = useSearchParams();
   const machineId = searchParams.get('machineid');
@@ -148,6 +291,8 @@ export default function StampCard({
     setIsLoading(true);
     setError('');
     setWarning('');
+    setLocationError(null);
+    setPendingStamp({ type, workDescription });
 
     try {
       const position = await getBestPositionAdaptive((lat, lon) => {
@@ -164,9 +309,12 @@ export default function StampCard({
       const { latitude, longitude, accuracy } = position.coords;
       const positionTimestamp = position.timestamp;
       const ageMs = Date.now() - positionTimestamp;
-      const warnAges: string[] = [];
+      const warnings: string[] = [];
       if (ageMs > 10_000) {
-        warnAges.push('位置情報が古い可能性があります（>10秒）');
+        warnings.push('位置情報が古い可能性があります（>10秒）');
+      }
+      if (position.source === 'cache') {
+        warnings.push('最新の位置情報を取得できなかったため、最後に保存した位置情報を使用しました。');
       }
       const decidedSite = findNearestSite(latitude, longitude, sites);
 
@@ -179,7 +327,7 @@ export default function StampCard({
             workDescription,
             lat: latitude,
             lon: longitude,
-            accuracy,
+            accuracy: typeof accuracy === 'number' ? accuracy : null,
             type,
             positionTimestamp,
             clientDecision: 'auto',
@@ -187,17 +335,17 @@ export default function StampCard({
           }),
         });
         const data = await response.json();
-        const warnings: string[] = warnAges.slice();
+        const combinedWarnings: string[] = warnings.slice();
         if (typeof data.accuracy === 'number' && data.accuracy > 100) {
-          warnings.push('位置精度が低い可能性があります（>100m）');
+          combinedWarnings.push('位置精度が低い可能性があります（>100m）');
         }
         if (
           typeof data.nearest_distance_m === 'number' &&
           data.nearest_distance_m > 1000
         ) {
-          warnings.push('録拠点から離れている可能性があります（>1km）');
+          combinedWarnings.push('録拠点から離れている可能性があります（>1km）');
         }
-        setWarning(warnings.join(' / '));
+        setWarning(combinedWarnings.join(' / '));
         if (!response.ok) {
           throw new Error(data.message || `サーバーエラー: ${response.statusText}`);
         }
@@ -207,22 +355,29 @@ export default function StampCard({
         } else {
           setStampType('COMPLETED');
         }
+        setPendingStamp(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : '通信に失敗しました。';
         setError(message);
+        setPendingStamp(null);
       } finally {
         setIsLoading(false);
       }
     } catch (geoError) {
-      const message =
-        geoError instanceof Error
-          ? geoError.message
-          : typeof geoError === 'string'
-            ? geoError
-            : '不明なエラーが発生しました。';
-      setError(`位置情報の取得に失敗しました: ${message}`);
+      const normalized = normalizeToLocationError(geoError);
+      console.error('[GeolocationError]', geoError);
+      setLocationError(normalized);
       setIsLoading(false);
     }
+  };
+
+  const handleRetryLocation = () => {
+    if (!pendingStamp) {
+      setLocationError(null);
+      return;
+    }
+    setLocationError(null);
+    void handleStamp(pendingStamp.type, pendingStamp.workDescription);
   };
 
   const handleCheckIn = (e: React.FormEvent<HTMLFormElement>) => {
@@ -239,6 +394,34 @@ export default function StampCard({
   };
 
   if (isLoading) return <CardState title="処理中..." message="サーバーと通信しています。" />;
+  if (locationError)
+    return (
+      <div
+        className="flex min-h-[calc(100svh-56px)] w-full items-center justify-center p-4"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="location-error-title"
+      >
+        <div className="card w-[90vw] max-w-[560px] space-y-4 text-center">
+          <h2 id="location-error-title" className="text-lg font-semibold text-gray-900">
+            位置情報の取得に失敗しました
+          </h2>
+          <p className="text-sm text-gray-700">
+            {describeLocationError(locationError.reason)}
+            <br />
+            許可設定または電波状況をご確認のうえ、再試行してください。
+          </p>
+          <button
+            type="button"
+            onClick={handleRetryLocation}
+            className="work-btn w-full min-h-12 text-lg"
+            aria-label="位置情報の取得を再試行"
+          >
+            再試行
+          </button>
+        </div>
+      </div>
+    );
   if (error) return <CardState title="エラーが発生しました" message={error} />;
   if (!machineId) return <CardState title="無効なアクセス" message="NFCタグから機械IDを読み取れませんでした。" />;
   if (stampType === 'COMPLETED')
