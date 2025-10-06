@@ -2,41 +2,34 @@
 
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 
 export default function LoginForm() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
   const searchParams = useSearchParams();
+  const callbackUrl = searchParams?.get('callbackUrl') ?? '/dashboard';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
     setIsLoading(true);
 
     try {
-      const result = await signIn('credentials', {
-        redirect: false, // ページ遷移を自身でコントロールするため
+      const result = (await signIn('credentials', {
+        redirect: true,
+        callbackUrl,
         username,
         password,
-      });
+      })) as { error?: string } | undefined;
 
       if (result?.error) {
         setError('IDまたはパスワードが正しくありません');
-      } else if (result?.ok) {
-        // 現在のページのクエリパラメータを取得
-        const params = new URLSearchParams(searchParams.toString());
-        const queryString = params.toString();
-
-        // リダイレクト先URLを構築
-        const destination = `/nfc${queryString ? `?${queryString}` : ''}`;
-        router.push(destination);
       }
     } catch (err) {
-        console.error("Login failed:", err); // エラー内容をログに出力
+      console.error('Login failed:', err);
       setError('ログイン中にエラーが発生しました。');
     } finally {
       setIsLoading(false);
