@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { SiteFields, WorkTypeFields } from '@/types';
 import { Record } from 'airtable';
-import LogoutButton from './LogoutButton'; // LogoutButtonをインポート
+import LogoutButton from './LogoutButton';
+import A11yButton from './A11yButton';
 import { extractGeometry, findNearestSite, pointInGeometry } from '@/lib/geo';
 import {
   LocationError,
@@ -20,14 +21,17 @@ type StampCardProps = {
 };
 
 // 完了・エラー・待機時の汎用表示コンポーネント
-const CardState = ({ title, message }: { title?: string; message: string }) => (
-  <div className="flex min-h-[calc(100svh-56px)] w-full items-center justify-center p-4">
-    <div className="card">
-      {title && <h2 className="text-xl font-bold">{title}</h2>}
-      <p className="mt-4 text-gray-700">{message}</p>
+const CardState = ({ title, message, role = 'status' }: { title?: string; message: string; role?: 'status' | 'alert' }) => {
+  const liveMode = role === 'alert' ? 'assertive' : 'polite';
+  return (
+    <div className="flex min-h-[calc(100svh-72px)] w-full items-center justify-center p-4" role={role} aria-live={liveMode}>
+      <div className="card text-center">
+        {title ? <h2 className="text-xl font-bold text-brand-text">{title}</h2> : null}
+        <p className="mt-4 text-base text-brand-muted">{message}</p>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 type StoredPosition = {
   lat: number;
@@ -393,126 +397,123 @@ export default function StampCard({
     handleStamp('OUT', lastWorkDescription);
   };
 
-  if (isLoading) return <CardState title="処理中..." message="サーバーと通信しています。" />;
+  if (isLoading) {
+    return <CardState title="処理中" message="サーバーと通信しています。" role="status" />;
+  }
   if (locationError)
     return (
       <div
-        className="flex min-h-[calc(100svh-56px)] w-full items-center justify-center p-4"
-        role="alertdialog"
+        className="flex min-h-[calc(100svh-72px)] w-full items-center justify-center p-4"
+        role="dialog"
         aria-modal="true"
         aria-labelledby="location-error-title"
+        aria-describedby="location-error-description"
       >
         <div className="card w-[90vw] max-w-[560px] space-y-4 text-center">
-          <h2 id="location-error-title" className="text-lg font-semibold text-gray-900">
+          <h2 id="location-error-title" className="text-lg font-semibold text-brand-text">
             位置情報の取得に失敗しました
           </h2>
-          <p className="text-sm text-gray-700">
-            {describeLocationError(locationError.reason)}
-            <br />
-            許可設定または電波状況をご確認のうえ、再試行してください。
-          </p>
-          <button
-            type="button"
-            onClick={handleRetryLocation}
-            className="work-btn w-full min-h-12 text-lg"
-            aria-label="位置情報の取得を再試行"
+          <p
+            id="location-error-description"
+            role="status"
+            aria-live="assertive"
+            className="text-sm text-brand-muted"
           >
-            再試行
-          </button>
+            {describeLocationError(locationError.reason)}。許可設定または電波状況をご確認のうえ、再試行してください。
+          </p>
+          <A11yButton type="button" onClick={handleRetryLocation} className="w-full justify-center text-base">
+            位置情報の取得を再試行
+          </A11yButton>
         </div>
       </div>
     );
-  if (error) return <CardState title="エラーが発生しました" message={error} />;
-  if (!machineId) return <CardState title="無効なアクセス" message="NFCタグから機械IDを読み取れませんでした。" />;
-  if (stampType === 'COMPLETED')
-    return (
-      <div className="flex min-h-[calc(100svh-56px)] w-full items-center justify-center p-4">
-        <p className="whitespace-nowrap break-keep text-center text-black leading-normal max-w-[90vw] mx-auto text-base sm:text-lg">
-          本日の業務お疲れ様でした。
-        </p>
-      </div>
-    );
+  if (error) {
+    return <CardState title="エラーが発生しました" message={error} role="alert" />;
+  }
+  if (!machineId) {
+    return <CardState title="無効なアクセス" message="NFCタグから機械IDを読み取れませんでした。" role="alert" />;
+  }
+  if (stampType === 'COMPLETED') {
+    return <CardState message="本日の業務お疲れ様でした。" role="status" />;
+  }
 
   return (
-    <div className="flex min-h-[calc(100svh-56px)] w-full flex-col items-center gap-6 p-4 pb-[calc(env(safe-area-inset-bottom)+12px)]">
-        {warning && (
+    <section
+      className="flex min-h-[calc(100svh-72px)] w-full flex-col items-center gap-6 p-4 pb-[calc(env(safe-area-inset-bottom)+12px)]"
+      aria-live="polite"
+    >
+      {warning ? (
         <div
-          role="alert"
-          className="w-[90vw] max-w-[560px] rounded bg-yellow-50 p-2 text-sm text-yellow-800"
+          role="status"
+          className="w-[90vw] max-w-[560px] rounded-lg border border-brand-border bg-brand-primary/10 px-4 py-2 text-sm text-brand-text"
         >
           {warning}
         </div>
-      )}
-      <div className="card w-[90vw] max-w-[560px] mx-auto">
-        <div className="space-y-2 text-center">
-          <p className="text-lg font-semibold text-gray-800">{userName} さん</p>
-          <p className="text-gray-600">
+      ) : null}
+      <div className="card w-[90vw] max-w-[560px] text-center" role="status">
+        <div className="space-y-2">
+          <p className="text-lg font-semibold text-brand-text">{userName} さん</p>
+          <p className="text-brand-muted">
             <span className="font-semibold">機械:</span> {machineName}
           </p>
         </div>
       </div>
       {stampType === 'IN' ? (
-        <>
-          <form id="check-in-form" onSubmit={handleCheckIn} className="w-full">
-            <div className="card w-[90vw] max-w-[560px] mx-auto text-left">
-              <label htmlFor="workDescription" className="mb-2 block text-sm font-medium text-black">
-                本日の作業内容を選択
-              </label>
-              <div className="relative w-full">
-                <select
-                  id="workDescription"
-                  name="workDescription"
-                  required
-                  value={selectedWork}
-                  onChange={(e) => setSelectedWork(e.target.value)}
-                  className="w-full bg-white text-black rounded-xl px-4 py-3 pr-10 text-base leading-tight ring-1 ring-zinc-300 focus:ring-2 focus:ring-primary outline-none appearance-none"
-                >
-                  <option value="" disabled className="whitespace-nowrap">
-                    選択してください
+        <form id="check-in-form" onSubmit={handleCheckIn} className="w-full max-w-[560px] space-y-4">
+          <div className="card w-[90vw] max-w-[560px]">
+            <label htmlFor="workDescription" className="mb-2 block text-sm font-semibold text-brand-text">
+              本日の作業内容を選択
+            </label>
+            <div className="relative w-full">
+              <select
+                id="workDescription"
+                name="workDescription"
+                required
+                value={selectedWork}
+                onChange={(event) => setSelectedWork(event.target.value)}
+                aria-describedby="work-description-hint"
+                className="w-full appearance-none rounded-xl border border-brand-border bg-brand-surface-alt px-4 py-3 pr-10 text-base leading-tight text-brand-text shadow-sm"
+              >
+                <option value="" disabled>
+                  選択してください
+                </option>
+                {workTypes.map((wt) => (
+                  <option key={wt.id} value={wt.fields.name}>
+                    {wt.fields.name}
                   </option>
-                  {workTypes.map((wt) => (
-                    <option key={wt.id} value={wt.fields.name} className="whitespace-nowrap">
-                      {wt.fields.name}
-                    </option>
-                  ))}
-                </select>
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500">▾</span>
-              </div>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted">▾</span>
             </div>
-          </form>
-          <div className="w-[90vw] max-w-[560px] mx-auto px-4">
-            <button
-              onClick={() => (document.getElementById('check-in-form') as HTMLFormElement)?.requestSubmit()}
-              disabled={!selectedWork || isLoading}
-              className="work-btn w-full min-h-12 text-lg disabled:bg-gray-400"
-            >
-              出 勤
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="card w-[90vw] max-w-[560px] mx-auto text-center">
-            <p className="text-black">
-              <span className="font-semibold">現在の作業:</span>{' '}
-              <span className="whitespace-nowrap">{lastWorkDescription || 'N/A'}</span>
+            <p id="work-description-hint" className="mt-2 text-sm text-brand-muted">
+              作業内容を選択後、出勤ボタンで記録します。
             </p>
           </div>
-          <div className="w-[90vw] max-w-[560px] mx-auto px-4">
-            <button
-              onClick={handleCheckOut}
-              disabled={isLoading}
-              type="button"
-              className="work-btn w-full min-h-12 text-lg disabled:bg-gray-400"
-            >
-              退 勤
-            </button>
+          <A11yButton
+            type="submit"
+            disabled={!selectedWork || isLoading}
+            aria-busy={isLoading}
+            className="w-full justify-center text-lg font-bold"
+          >
+            出勤
+          </A11yButton>
+        </form>
+      ) : (
+        <div className="w-full max-w-[560px] space-y-4">
+          <div className="card w-[90vw] max-w-[560px] text-center">
+            <p className="text-brand-text">
+              <span className="font-semibold">現在の作業:</span>{' '}
+              <span className="whitespace-nowrap">{lastWorkDescription || '登録なし'}</span>
+            </p>
           </div>
-        </>
+          <A11yButton onClick={handleCheckOut} disabled={isLoading} aria-busy={isLoading} className="w-full justify-center text-lg font-bold">
+            退勤
+          </A11yButton>
+        </div>
       )}
-      <div className="w-[90vw] max-w-[560px] mx-auto">
+      <div className="w-[90vw] max-w-[560px]">
         <LogoutButton />
       </div>
-    </div>
+    </section>
   );
 }

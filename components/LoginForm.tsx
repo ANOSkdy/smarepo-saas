@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
+import A11yButton from './A11yButton';
 
 export default function LoginForm() {
   const [username, setUsername] = useState('');
@@ -36,54 +37,74 @@ export default function LoginForm() {
     }
   };
 
+  const errorId = error ? 'login-error' : undefined;
+  const usernameDescribedBy = ['username-hint', errorId].filter(Boolean).join(' ') || undefined;
+  const passwordDescribedBy = ['password-hint', errorId].filter(Boolean).join(' ') || undefined;
+
   return (
-    <div className="container-p flex min-h-[calc(100vh-61px)] items-center justify-center bg-base">
-      <div className="card text-left">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {error && (
-            <p className="rounded-md border border-accent-2/50 bg-accent-2/10 p-3 text-center font-bold text-accent-2">
-              {error}
+    <div className="container-p flex min-h-[calc(100svh-80px)] items-center justify-center">
+      <div className="card w-full max-w-md">
+        <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+          <div className="space-y-2">
+            <h1 data-testid="login-title" className="text-2xl font-bold text-brand-text">
+              ログイン
+            </h1>
+            <p className="text-sm text-brand-muted">
+              発行済みのIDとパスワードを入力してサインインしてください。
             </p>
-          )}
-          <div>
-            <label
-              htmlFor="username"
-              className="block text-sm font-medium text-gray-700"
+          </div>
+          {error ? (
+            <div
+              id="login-error"
+              role="alert"
+              className="rounded-lg border border-brand-error/40 bg-brand-error/10 px-4 py-3 text-sm font-semibold text-brand-error"
             >
+              {error}
+            </div>
+          ) : null}
+          <div className="space-y-2">
+            <label htmlFor="username" className="block text-sm font-semibold text-brand-text">
               ID
             </label>
             <input
               id="username"
+              name="username"
               type="text"
+              autoComplete="username"
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={(event) => setUsername(event.target.value)}
               required
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary"
+              aria-describedby={usernameDescribedBy}
+              aria-invalid={Boolean(error)}
+              className="w-full rounded-lg border border-brand-border bg-brand-surface-alt px-3 py-2 text-brand-text shadow-sm"
             />
+            <p id="username-hint" className="text-sm text-brand-muted">
+              会社から共有されたIDを入力してください。
+            </p>
           </div>
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-gray-700"
-            >
+          <div className="space-y-2">
+            <label htmlFor="password" className="block text-sm font-semibold text-brand-text">
               パスワード
             </label>
             <input
               id="password"
+              name="password"
               type="password"
+              autoComplete="current-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(event) => setPassword(event.target.value)}
               required
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary"
+              aria-describedby={passwordDescribedBy}
+              aria-invalid={Boolean(error)}
+              className="w-full rounded-lg border border-brand-border bg-brand-surface-alt px-3 py-2 text-brand-text shadow-sm"
             />
+            <p id="password-hint" className="text-sm text-brand-muted">
+              大文字・小文字を区別して入力してください。
+            </p>
           </div>
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="btn-primary w-full text-lg font-bold disabled:opacity-50"
-          >
-            {isLoading ? 'ログイン中...' : 'ログイン'}
-          </button>
+          <A11yButton type="submit" disabled={isLoading} aria-busy={isLoading} className="w-full justify-center text-base">
+            {isLoading ? 'ログイン中…' : 'ログイン'}
+          </A11yButton>
         </form>
       </div>
     </div>

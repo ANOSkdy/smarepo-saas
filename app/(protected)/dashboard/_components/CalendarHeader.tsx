@@ -27,26 +27,24 @@ export default function CalendarHeader({ year, month, onPrev, onNext, onReset }:
         <button
           type="button"
           onClick={onPrev}
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-blue-500 hover:text-blue-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          aria-label="前の月へ"
+          className="tap-target rounded-lg border border-brand-border bg-brand-surface-alt px-3 py-2 text-sm font-semibold text-brand-text shadow-sm transition hover:bg-brand-surface"
         >
           前月
         </button>
-        <div className="text-sm font-medium text-gray-700" aria-live="polite">
+        <div className="text-sm font-medium text-brand-text" aria-live="polite">
           {label}
         </div>
         <button
           type="button"
           onClick={onNext}
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-blue-500 hover:text-blue-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          aria-label="次の月へ"
+          className="tap-target rounded-lg border border-brand-border bg-brand-surface-alt px-3 py-2 text-sm font-semibold text-brand-text shadow-sm transition hover:bg-brand-surface"
         >
           次月
         </button>
         <button
           type="button"
           onClick={onReset}
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-blue-500 hover:text-blue-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          className="tap-target rounded-lg border border-brand-border bg-brand-primary/10 px-3 py-2 text-sm font-semibold text-brand-primary transition hover:bg-brand-primary/20"
         >
           今月
         </button>

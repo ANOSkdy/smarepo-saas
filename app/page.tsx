@@ -1,5 +1,6 @@
-import { auth } from '@/lib/auth';
 import { redirect } from 'next/navigation';
+import { auth } from '@/lib/auth';
+import { ROUTES } from '@/src/constants/routes';
 
 export default async function Home() {
   const session = await auth();
@@ -9,6 +10,6 @@ export default async function Home() {
     redirect('/nfc');
   } else {
     // ユーザーがログインしていない場合、ログインページにリダイレクトします
-    redirect('/login');
+    redirect(ROUTES.LOGIN);
   }
 }

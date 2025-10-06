@@ -54,6 +54,8 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
   const [errorMessage, setErrorMessage] = useState('');
   const [detail, setDetail] = useState<DayDetailResponse | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previouslyFocusedElement = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open || !date) {
@@ -98,7 +100,17 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
 
   useEffect(() => {
     if (open && dialogRef.current) {
-      dialogRef.current.focus();
+      previouslyFocusedElement.current = document.activeElement as HTMLElement | null;
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      const initialTarget = closeButtonRef.current ?? focusable.item(0) ?? dialogRef.current;
+      initialTarget.focus();
+    }
+
+    if (!open && previouslyFocusedElement.current) {
+      previouslyFocusedElement.current.focus({ preventScroll: true });
+      previouslyFocusedElement.current = null;
     }
   }, [open]);
 
@@ -136,6 +148,25 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           onClose();
+          return;
+        }
+        if (event.key === 'Tab' && dialogRef.current) {
+          const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          );
+          if (focusable.length === 0) {
+            return;
+          }
+          const first = focusable.item(0);
+          const last = focusable.item(focusable.length - 1);
+          const active = document.activeElement as HTMLElement | null;
+          if (!event.shiftKey && active === last) {
+            event.preventDefault();
+            first.focus();
+          } else if (event.shiftKey && active === first) {
+            event.preventDefault();
+            last.focus();
+          }
         }
       }}
     >
@@ -145,37 +176,38 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
         aria-modal="true"
         aria-labelledby="day-detail-title"
         tabIndex={-1}
-        className="w-full max-w-4xl rounded-3xl bg-white shadow-xl focus:outline-none"
+        className="w-full max-w-4xl rounded-3xl border border-brand-border bg-brand-surface-alt shadow-xl"
       >
-        <div className="flex items-start justify-between border-b border-gray-100 px-6 py-4">
+        <div className="flex items-start justify-between border-b border-brand-border px-6 py-4">
           <div>
-            <h3 id="day-detail-title" className="text-lg font-semibold text-gray-900">
+            <h3 id="day-detail-title" className="text-lg font-semibold text-brand-text">
               {headerLabel || '日次詳細'}
             </h3>
-            <p className="text-sm text-gray-500">ユーザーごとのセッション概要を表示します。</p>
+            <p className="text-sm text-brand-muted">ユーザーごとのセッション概要を表示します。</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-gray-200 p-2 text-sm text-gray-600 transition-colors hover:border-blue-500 hover:text-blue-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            ref={closeButtonRef}
+            className="tap-target rounded-full border border-brand-border bg-brand-surface-alt p-2 text-sm text-brand-text transition hover:bg-brand-surface"
             aria-label="閉じる"
           >
             ✕
           </button>
         </div>
-        <div className="max-h-[65vh] overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+        <div className="max-h-[65vh] overflow-y-auto px-4 py-4 sm:px-6 sm:py-5" aria-live="polite">
           {state === 'loading' ? (
             <div className="space-y-3">
               {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="animate-pulse rounded-2xl border border-gray-100 bg-gray-50 p-4">
-                  <div className="h-4 w-32 rounded bg-gray-200" />
-                  <div className="mt-2 h-4 w-48 rounded bg-gray-200" />
+                <div key={index} className="animate-pulse rounded-2xl border border-brand-border bg-brand-surface p-4">
+                  <div className="h-4 w-32 rounded bg-brand-border" />
+                  <div className="mt-2 h-4 w-48 rounded bg-brand-border/80" />
                 </div>
               ))}
             </div>
           ) : state === 'error' ? (
             <div
-              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+              className="rounded-lg border border-brand-border bg-brand-surface-alt px-4 py-3 text-sm text-brand-error"
               role="alert"
             >
               {errorMessage}
@@ -183,26 +215,30 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
           ) : detail ? (
             <div className="space-y-4">
               <section>
-                <h4 className="text-sm font-semibold text-gray-800">セッション概要</h4>
+                <h4 className="text-sm font-semibold text-brand-text">セッション概要</h4>
                 {sessionGroups.length === 0 ? (
-                  <p className="mt-2 text-sm text-gray-500">この日にペアリングされたセッションはありません。</p>
+                  <p className="mt-2 text-sm text-brand-muted">この日にペアリングされたセッションはありません。</p>
                 ) : (
                   <div className="mt-3 space-y-3">
                     {sessionGroups.map((group) => (
-                      <div key={group.userName} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+                      <div
+                        key={group.userName}
+                        className="rounded-2xl border border-brand-border bg-brand-surface-alt p-4 shadow-sm sm:p-5"
+                      >
                         <div className="flex items-center justify-between">
-                          <p className="text-[15px] font-semibold text-gray-900 !text-black sm:text-base">{group.userName}</p>
+                          <p className="text-[15px] font-semibold text-brand-text sm:text-base">{group.userName}</p>
                         </div>
-                        <div className="mt-2 divide-y divide-gray-100">
+                        <div className="mt-2 divide-y divide-brand-border/60">
                           {group.items.map((session, index) => {
-                            const statusClass = session.status === '稼働中' ? 'text-orange-600' : 'text-primary';
+                            const statusClass =
+                              session.status === '稼働中' ? 'text-amber-600' : 'text-brand-primary';
                             return (
                               <div
                                 key={`${session.userName}-${session.clockInAt}-${index}`}
                                 className="py-2 first:pt-0 last:pb-0"
                               >
-                                <p className="text-xs text-gray-800 sm:text-sm">{session.siteName ?? '現場未設定'}</p>
-                                <div className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-gray-900">
+                                <p className="text-xs text-brand-muted sm:text-sm">{session.siteName ?? '現場未設定'}</p>
+                                <div className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-brand-text">
                                   <span>
                                     {session.clockInAt}
                                     {session.clockOutAt ? ` → ${session.clockOutAt}` : ''}
@@ -224,11 +260,11 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
             <p className="text-sm text-gray-500">対象日の情報が見つかりませんでした。</p>
           )}
         </div>
-        <div className="flex items-center justify-end gap-3 border-t border-gray-100 px-4 py-4 sm:px-6">
+        <div className="flex items-center justify-end gap-3 border-t border-brand-border px-4 py-4 sm:px-6">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-blue-500 hover:text-blue-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className="tap-target rounded-xl border border-brand-border bg-brand-surface-alt px-4 py-2 text-sm font-semibold text-brand-text shadow-sm transition hover:bg-brand-surface"
           >
             閉じる
           </button>
