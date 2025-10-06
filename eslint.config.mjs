@@ -19,6 +19,7 @@ const eslintConfig = [
       'out/**',
       'build/**',
       'next-env.d.ts',
+      'tests/dist/**',
     ],
   },
   // Prettierの設定は、他の設定を上書きするため配列の最後に配置します
