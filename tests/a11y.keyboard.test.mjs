@@ -18,3 +18,11 @@ test('protected layout exposes navigation landmark', () => {
   assert.match(protectedLayout, /role="navigation"/);
   assert.match(protectedLayout, /aria-label="保護エリア内ナビゲーション"/);
 });
+
+test('logout flows return to the unified login UI', () => {
+  const logoutButton = read('../components/LogoutButton.tsx');
+  assert.match(logoutButton, /callbackUrl:\s*ROUTES\.LOGIN/);
+
+  const loginForm = read('../components/LoginForm.tsx');
+  assert.match(loginForm, /data-testid="login-title"/);
+});

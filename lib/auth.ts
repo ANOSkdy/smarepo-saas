@@ -1,7 +1,8 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import { usersTable } from '@/lib/airtable';
 import type { User } from 'next-auth';
+import { usersTable } from '@/lib/airtable';
+import { ROUTES } from '@/src/constants/routes';
 
 const secret = process.env.NEXTAUTH_SECRET;
 if (!secret) {
@@ -84,7 +85,7 @@ export const {
     },
   },
   pages: {
-    signIn: '/login',
+    signIn: ROUTES.LOGIN,
   },
   logger: {
     error(code, ...metadata) {

@@ -46,7 +46,9 @@ export default function LoginForm() {
       <div className="card w-full max-w-md">
         <form onSubmit={handleSubmit} className="space-y-6" noValidate>
           <div className="space-y-2">
-            <h1 className="text-2xl font-bold text-brand-text">ログイン</h1>
+            <h1 data-testid="login-title" className="text-2xl font-bold text-brand-text">
+              ログイン
+            </h1>
             <p className="text-sm text-brand-muted">
               発行済みのIDとパスワードを入力してサインインしてください。
             </p>

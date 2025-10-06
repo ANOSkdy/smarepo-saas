@@ -1,10 +1,11 @@
 'use client';
 
 import { signOut } from 'next-auth/react';
+import { ROUTES } from '@/src/constants/routes';
 
 export default function LogoutButton() {
   const handleLogout = () => {
-    signOut({ callbackUrl: '/login' });
+    signOut({ callbackUrl: ROUTES.LOGIN });
   };
 
   return (

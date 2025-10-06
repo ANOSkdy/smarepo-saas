@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
+import { ROUTES } from '@/src/constants/routes';
 import ActivityCalendar from './_components/ActivityCalendar';
 import NfcLinkButton from './_components/NfcLinkButton';
 
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) {
-    redirect('/login');
+    redirect(ROUTES.LOGIN);
   }
 
   return (

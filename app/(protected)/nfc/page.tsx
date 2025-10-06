@@ -1,7 +1,8 @@
+import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import StampCard from '@/components/StampCard';
 import { getTodayLogs, getMachineById } from '@/lib/airtable';
-import { redirect } from 'next/navigation';
+import { ROUTES } from '@/src/constants/routes';
 
 // ページが動的にレンダリングされるように設定
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,7 @@ type NFCPageProps = {
 export default async function NFCPage({ searchParams }: NFCPageProps) {
   const session = await auth();
   if (!session?.user?.id) {
-    redirect('/login');
+    redirect(ROUTES.LOGIN);
   }
 
   const machineId = searchParams.machineid;
