@@ -132,13 +132,13 @@ export default function ActivityCalendar() {
       />
       {state === 'error' ? (
         <div
-          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          className="rounded-lg border border-brand-border bg-brand-surface-alt px-4 py-3 text-sm text-brand-error"
           role="alert"
         >
           {errorMessage}
         </div>
       ) : null}
-      <div className="overflow-hidden rounded-2xl border border-gray-100">
+      <div className="overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-alt">
         <div
           className="grid gap-2 p-3"
           style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}
@@ -162,7 +162,7 @@ export default function ActivityCalendar() {
               <div key={date} role="gridcell" className="calendar-cell-wrapper">
                 <button
                   type="button"
-                  className={`calendar-cell ${hasActivity ? 'active' : ''} ${isToday ? 'today' : ''}`}
+                  className={`calendar-cell tap-target ${hasActivity ? 'active' : ''} ${isToday ? 'today' : ''}`}
                   onClick={() => setSelectedDate(date)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
@@ -173,8 +173,8 @@ export default function ActivityCalendar() {
                   aria-label={`${date}の稼働詳細`}
                 >
                   <div className="flex flex-col gap-2">
-                    <span className="text-[13px] font-medium text-gray-800 sm:text-sm">{dayNumber}</span>
-                    <div className="text-xs text-primary/80 site-names">
+                    <span className="text-[13px] font-medium text-brand-text sm:text-sm">{dayNumber}</span>
+                    <div className="text-xs text-brand-muted site-names">
                       {displaySites.length > 0 ? displaySites.join(' / ') : '現場情報なし'}
                     </div>
                   </div>

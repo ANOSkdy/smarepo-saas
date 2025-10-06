@@ -11,8 +11,7 @@ export default function NfcLinkButton() {
     <Link
       href={`/nfc?${qs}`}
       prefetch
-      className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-      aria-label="打刻ページへ"
+      className="tap-target inline-flex items-center gap-2 rounded-xl border border-brand-border bg-brand-primary px-4 py-2 text-sm font-semibold text-brand-primaryText shadow-sm transition hover:bg-brand-primary/90"
     >
       <svg
         className="h-4 w-4"
