@@ -19,8 +19,6 @@ type CalendarResponse = {
   days: CalendarDay[];
 };
 
-type FetchState = 'idle' | 'loading' | 'success' | 'error';
-
 const JST_OFFSET = 9 * 60 * 60 * 1000;
 
 function getTodayInfo() {
@@ -69,13 +67,9 @@ export default function ActivityCalendar() {
   const [year, setYear] = useState(today.year);
   const [month, setMonth] = useState(today.month);
   const [data, setData] = useState<CalendarResponse | null>(null);
-  const [state, setState] = useState<FetchState>('idle');
-  const [errorMessage, setErrorMessage] = useState('');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const fetchCalendar = useCallback(async () => {
-    setState('loading');
-    setErrorMessage('');
     try {
       const params = new URLSearchParams({ year: String(year), month: String(month) });
       const response = await fetch(`/api/calendar/month?${params.toString()}`, {
@@ -83,16 +77,16 @@ export default function ActivityCalendar() {
         cache: 'no-store',
         credentials: 'same-origin',
       });
-      if (!response.ok) {
-        throw new Error(`Calendar API error: ${response.status}`);
-      }
-      const payload = (await response.json()) as CalendarResponse;
-      setData(payload);
-      setState('success');
+      const payload = (await response.json()) as Partial<CalendarResponse> | null;
+      const days = Array.isArray(payload?.days) ? payload.days : [];
+      setData({
+        year: typeof payload?.year === 'number' ? payload.year : year,
+        month: typeof payload?.month === 'number' ? payload.month : month,
+        days,
+      });
     } catch (error) {
       console.error('Failed to load calendar summary', error);
-      setErrorMessage('カレンダー情報の取得に失敗しました。再読み込みしてください。');
-      setState('error');
+      setData({ year, month, days: [] });
     }
   }, [month, year]);
 
@@ -130,14 +124,6 @@ export default function ActivityCalendar() {
           setMonth(today.month);
         }}
       />
-      {state === 'error' ? (
-        <div
-          className="rounded-lg border border-brand-border bg-brand-surface-alt px-4 py-3 text-sm text-brand-error"
-          role="alert"
-        >
-          {errorMessage}
-        </div>
-      ) : null}
       <div className="overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-alt">
         <div
           className="grid gap-2 p-3"

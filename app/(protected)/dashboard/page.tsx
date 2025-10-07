@@ -17,9 +17,9 @@ export default async function DashboardPage() {
       <nav aria-label="breadcrumb" className="text-sm text-brand-muted">
         <ol className="flex flex-wrap items-center gap-2">
           <li>
-            <a href="/dashboard" className="tap-target text-brand-primary">
+            <span className="text-brand-primary" aria-current="false">
               ホーム
-            </a>
+            </span>
           </li>
           <li aria-hidden="true">/</li>
           <li aria-current="page" className="font-medium text-brand-text">

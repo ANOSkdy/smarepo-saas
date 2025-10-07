@@ -45,7 +45,8 @@ export default async function NFCPage({ searchParams }: NFCPageProps) {
     const initialStampType = lastLog?.fields.type === 'IN' ? 'OUT' : 'IN';
     const initialWorkDescription = lastLog?.fields.workDescription ?? '';
 
-    const machineName = (machine.fields.name as string | undefined) ?? machineId;
+    const machineIdentifier = (machine.fields.machineid as string | undefined) ?? null;
+    const machineName = machineIdentifier && machineIdentifier.length > 0 ? machineIdentifier : '未登録';
 
     return (
       <section className="flex flex-1 items-center justify-center">
