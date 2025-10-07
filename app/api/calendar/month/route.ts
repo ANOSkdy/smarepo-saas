@@ -12,36 +12,28 @@ function resolveMonthRange(year: number, month: number) {
 }
 
 export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const yearValue = searchParams.get('year');
+  const monthValue = searchParams.get('month');
+  const year = yearValue ? Number.parseInt(yearValue, 10) : NaN;
+  const month = monthValue ? Number.parseInt(monthValue, 10) : NaN;
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return NextResponse.json({ message: 'invalid params' }, { status: 400 });
+  }
+
   try {
-    const { searchParams } = new URL(req.url);
-    const yearValue = searchParams.get('year');
-    const monthValue = searchParams.get('month');
-    const yearRaw = yearValue ? Number.parseInt(yearValue, 10) : NaN;
-    const monthRaw = monthValue ? Number.parseInt(monthValue, 10) : NaN;
-
-    const year = Number.isFinite(yearRaw) ? yearRaw : null;
-    const month = Number.isFinite(monthRaw) ? monthRaw : null;
-
-    if (!year || !month || month < 1 || month > 12) {
-      return NextResponse.json({ year, month, days: [] });
-    }
-
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ year, month, days: [] });
+      return NextResponse.json({ message: 'unauthorized' }, { status: 401 });
     }
 
-    try {
-      const range = resolveMonthRange(year, month);
-      const logs = await getLogsBetween(range);
-      const days = summariseMonth(logs);
-      return NextResponse.json({ year, month, days });
-    } catch (error) {
-      console.error('[calendar][month] failed to build summary', error);
-      return NextResponse.json({ year, month, days: [] });
-    }
+    const range = resolveMonthRange(year, month);
+    const logs = await getLogsBetween(range);
+    const days = summariseMonth(logs);
+    return NextResponse.json({ year, month, days: days ?? [] });
   } catch (error) {
-    console.error('[calendar][month] unexpected error', error);
-    return NextResponse.json({ year: null, month: null, days: [] });
+    console.error('[calendar][month] error', error);
+    return NextResponse.json({ message: 'calendar fetch failed' }, { status: 500 });
   }
 }

@@ -19,6 +19,18 @@ type CalendarResponse = {
   days: CalendarDay[];
 };
 
+function ErrorBanner({ message }: { message: string }) {
+  return (
+    <div
+      role="alert"
+      aria-live="assertive"
+      className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+    >
+      {message}
+    </div>
+  );
+}
+
 const JST_OFFSET = 9 * 60 * 60 * 1000;
 
 function getTodayInfo() {
@@ -68,8 +80,12 @@ export default function ActivityCalendar() {
   const [month, setMonth] = useState(today.month);
   const [data, setData] = useState<CalendarResponse | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [errorType, setErrorType] = useState<'http' | 'empty' | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const fetchCalendar = useCallback(async () => {
+    setIsLoading(true);
+    setErrorType(null);
     try {
       const params = new URLSearchParams({ year: String(year), month: String(month) });
       const response = await fetch(`/api/calendar/month?${params.toString()}`, {
@@ -77,8 +93,23 @@ export default function ActivityCalendar() {
         cache: 'no-store',
         credentials: 'same-origin',
       });
+      if (!response.ok) {
+        const message = await response.text().catch(() => '');
+        console.error('Failed to load calendar summary: HTTP error', response.status, message);
+        setErrorType('http');
+        setData(null);
+        setSelectedDate(null);
+        return;
+      }
       const payload = (await response.json()) as Partial<CalendarResponse> | null;
       const days = Array.isArray(payload?.days) ? payload.days : [];
+      if (days.length === 0) {
+        console.error('Failed to load calendar summary: empty payload');
+        setErrorType('empty');
+        setData(null);
+        setSelectedDate(null);
+        return;
+      }
       setData({
         year: typeof payload?.year === 'number' ? payload.year : year,
         month: typeof payload?.month === 'number' ? payload.month : month,
@@ -86,7 +117,11 @@ export default function ActivityCalendar() {
       });
     } catch (error) {
       console.error('Failed to load calendar summary', error);
-      setData({ year, month, days: [] });
+      setErrorType('http');
+      setData(null);
+      setSelectedDate(null);
+    } finally {
+      setIsLoading(false);
     }
   }, [month, year]);
 
@@ -107,10 +142,21 @@ export default function ActivityCalendar() {
 
   const navigateMonth = (offset: number) => {
     setData(null);
+    setErrorType(null);
     const base = new Date(Date.UTC(year, month - 1 + offset, 1));
     setYear(base.getUTCFullYear());
     setMonth(base.getUTCMonth() + 1);
   };
+
+  const errorMessage = useMemo(() => {
+    if (errorType === 'http') {
+      return 'カレンダー情報の取得に失敗しました。再読み込みしてください。';
+    }
+    if (errorType === 'empty') {
+      return 'カレンダー情報が取得できません。管理者にお問い合わせください。';
+    }
+    return null;
+  }, [errorType]);
 
   return (
     <div className="space-y-6">
@@ -124,52 +170,60 @@ export default function ActivityCalendar() {
           setMonth(today.month);
         }}
       />
-      <div className="overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-alt">
-        <div
-          className="grid gap-2 p-3"
-          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}
-          role="grid"
-          aria-label="月次稼働カレンダー"
-        >
-          {matrix.flat().map((date, index) => {
-            if (!date) {
-              return <div key={`empty-${index}`} className="calendar-cell empty" aria-hidden />;
-            }
-            const summary = dayMap.get(date);
-            const isToday = date === today.date;
-            const dayNumber = Number.parseInt(date.split('-')[2] ?? '0', 10);
-            const siteNames = summary?.sites ?? [];
-            const displaySites = siteNames.slice(0, 3);
-            const punches = summary?.punches ?? 0;
-            const hours = summary?.hours ?? 0;
-            const hasActivity = punches > 0 || hours > 0;
-
-            return (
-              <div key={date} role="gridcell" className="calendar-cell-wrapper">
-                <button
-                  type="button"
-                  className={`calendar-cell tap-target ${hasActivity ? 'active' : ''} ${isToday ? 'today' : ''}`}
-                  onClick={() => setSelectedDate(date)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      setSelectedDate(date);
-                    }
-                  }}
-                  aria-label={`${date}の稼働詳細`}
-                >
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[13px] font-medium text-brand-text sm:text-sm">{dayNumber}</span>
-                    <div className="text-xs text-brand-muted site-names">
-                      {displaySites.length > 0 ? displaySites.join(' / ') : '現場情報なし'}
-                    </div>
-                  </div>
-                </button>
-              </div>
-            );
-          })}
+      {isLoading && (
+        <div className="rounded-2xl border border-brand-border bg-brand-surface-alt px-4 py-3 text-sm text-brand-muted">
+          読み込み中…
         </div>
-      </div>
+      )}
+      {!isLoading && errorMessage && <ErrorBanner message={errorMessage} />}
+      {!isLoading && !errorMessage && data && (
+        <div className="overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-alt">
+          <div
+            className="grid gap-2 p-3"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}
+            role="grid"
+            aria-label="月次稼働カレンダー"
+          >
+            {matrix.flat().map((date, index) => {
+              if (!date) {
+                return <div key={`empty-${index}`} className="calendar-cell empty" aria-hidden />;
+              }
+              const summary = dayMap.get(date);
+              const isToday = date === today.date;
+              const dayNumber = Number.parseInt(date.split('-')[2] ?? '0', 10);
+              const siteNames = summary?.sites ?? [];
+              const displaySites = siteNames.slice(0, 3);
+              const punches = summary?.punches ?? 0;
+              const hours = summary?.hours ?? 0;
+              const hasActivity = punches > 0 || hours > 0;
+
+              return (
+                <div key={date} role="gridcell" className="calendar-cell-wrapper">
+                  <button
+                    type="button"
+                    className={`calendar-cell tap-target ${hasActivity ? 'active' : ''} ${isToday ? 'today' : ''}`}
+                    onClick={() => setSelectedDate(date)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setSelectedDate(date);
+                      }
+                    }}
+                    aria-label={`${date}の稼働詳細`}
+                  >
+                    <div className="flex flex-col gap-2">
+                      <span className="text-[13px] font-medium text-brand-text sm:text-sm">{dayNumber}</span>
+                      <div className="text-xs text-brand-muted site-names">
+                        {displaySites.length > 0 ? displaySites.join(' / ') : '現場情報なし'}
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <DayDetailDrawer date={selectedDate} open={Boolean(selectedDate)} onClose={() => setSelectedDate(null)} />
     </div>
   );
