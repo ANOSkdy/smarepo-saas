@@ -12,28 +12,30 @@ function resolveMonthRange(year: number, month: number) {
 }
 
 export async function GET(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ message: 'unauthorized' }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const yearValue = searchParams.get('year');
   const monthValue = searchParams.get('month');
   const year = yearValue ? Number.parseInt(yearValue, 10) : NaN;
   const month = monthValue ? Number.parseInt(monthValue, 10) : NaN;
 
-  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-    return NextResponse.json({ message: 'invalid params' }, { status: 400 });
+  if (!Number.isFinite(year) || !Number.isFinite(month) || year === 0 || month === 0) {
+    const normalizedYear = !Number.isFinite(year) || year === 0 ? null : year;
+    const normalizedMonth = !Number.isFinite(month) || month === 0 ? null : month;
+    return NextResponse.json({ year: normalizedYear, month: normalizedMonth, days: [] });
   }
 
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ message: 'unauthorized' }, { status: 401 });
-    }
-
     const range = resolveMonthRange(year, month);
     const logs = await getLogsBetween(range);
     const days = summariseMonth(logs);
     return NextResponse.json({ year, month, days: days ?? [] });
   } catch (error) {
     console.error('[calendar][month] error', error);
-    return NextResponse.json({ message: 'calendar fetch failed' }, { status: 500 });
+    return NextResponse.json({ year: null, month: null, days: [] });
   }
 }

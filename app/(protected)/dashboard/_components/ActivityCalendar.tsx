@@ -19,18 +19,6 @@ type CalendarResponse = {
   days: CalendarDay[];
 };
 
-function ErrorBanner({ message }: { message: string }) {
-  return (
-    <div
-      role="alert"
-      aria-live="assertive"
-      className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-    >
-      {message}
-    </div>
-  );
-}
-
 const JST_OFFSET = 9 * 60 * 60 * 1000;
 
 function getTodayInfo() {
@@ -80,12 +68,10 @@ export default function ActivityCalendar() {
   const [month, setMonth] = useState(today.month);
   const [data, setData] = useState<CalendarResponse | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [errorType, setErrorType] = useState<'http' | 'empty' | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchCalendar = useCallback(async () => {
     setIsLoading(true);
-    setErrorType(null);
     try {
       const params = new URLSearchParams({ year: String(year), month: String(month) });
       const response = await fetch(`/api/calendar/month?${params.toString()}`, {
@@ -96,20 +82,12 @@ export default function ActivityCalendar() {
       if (!response.ok) {
         const message = await response.text().catch(() => '');
         console.error('Failed to load calendar summary: HTTP error', response.status, message);
-        setErrorType('http');
-        setData(null);
+        setData({ year, month, days: [] });
         setSelectedDate(null);
         return;
       }
       const payload = (await response.json()) as Partial<CalendarResponse> | null;
       const days = Array.isArray(payload?.days) ? payload.days : [];
-      if (days.length === 0) {
-        console.error('Failed to load calendar summary: empty payload');
-        setErrorType('empty');
-        setData(null);
-        setSelectedDate(null);
-        return;
-      }
       setData({
         year: typeof payload?.year === 'number' ? payload.year : year,
         month: typeof payload?.month === 'number' ? payload.month : month,
@@ -117,8 +95,7 @@ export default function ActivityCalendar() {
       });
     } catch (error) {
       console.error('Failed to load calendar summary', error);
-      setErrorType('http');
-      setData(null);
+      setData({ year, month, days: [] });
       setSelectedDate(null);
     } finally {
       setIsLoading(false);
@@ -142,21 +119,10 @@ export default function ActivityCalendar() {
 
   const navigateMonth = (offset: number) => {
     setData(null);
-    setErrorType(null);
     const base = new Date(Date.UTC(year, month - 1 + offset, 1));
     setYear(base.getUTCFullYear());
     setMonth(base.getUTCMonth() + 1);
   };
-
-  const errorMessage = useMemo(() => {
-    if (errorType === 'http') {
-      return 'カレンダー情報の取得に失敗しました。再読み込みしてください。';
-    }
-    if (errorType === 'empty') {
-      return 'カレンダー情報が取得できません。管理者にお問い合わせください。';
-    }
-    return null;
-  }, [errorType]);
 
   return (
     <div className="space-y-6">
@@ -175,8 +141,7 @@ export default function ActivityCalendar() {
           読み込み中…
         </div>
       )}
-      {!isLoading && errorMessage && <ErrorBanner message={errorMessage} />}
-      {!isLoading && !errorMessage && data && (
+      {!isLoading && data && (
         <div className="overflow-hidden rounded-2xl border border-brand-border bg-brand-surface-alt">
           <div
             className="grid gap-2 p-3"

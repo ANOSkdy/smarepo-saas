@@ -37,16 +37,6 @@ export const machinesTable = getTypedTable<MachineFields>('Machines');
 export const sitesTable = getTypedTable<SiteFields>('Sites');
 export const workTypesTable = getTypedTable<WorkTypeFields>('WorkTypes');
 export const logsTable = getTypedTable<LogFields>('Logs');
-export async function airtableHealth(): Promise<{ ok: boolean; reason?: string }> {
-  try {
-    const records = await workTypesTable.select({ maxRecords: 1 }).firstPage();
-    return { ok: Array.isArray(records) };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'unknown airtable error';
-    console.error('airtableHealth error:', message);
-    return { ok: false, reason: message };
-  }
-}
 // ... (既存のコード) ...
 
 // machineid(URLのパラメータ)を使って機械レコードを1件取得する関数

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import StampCard from '@/components/StampCard';
-import { getTodayLogs, getMachineById } from '@/lib/airtable';
+import { getTodayLogs } from '@/lib/airtable';
 import { ROUTES } from '@/src/constants/routes';
 
 // ページが動的にレンダリングされるように設定
@@ -17,8 +17,8 @@ export default async function NFCPage({ searchParams }: NFCPageProps) {
     redirect(ROUTES.LOGIN);
   }
 
-  const machineId = searchParams.machineid;
-  if (typeof machineId !== 'string') {
+  const machineIdParam = searchParams.machineid;
+  if (typeof machineIdParam !== 'string') {
     return (
       <div role="alert" className="rounded-lg border border-brand-border bg-brand-surface-alt p-4 text-brand-text">
         無効な機械IDです。
@@ -27,16 +27,6 @@ export default async function NFCPage({ searchParams }: NFCPageProps) {
   }
 
   try {
-    // ### 修正点 1: machineIdから機械情報を取得 ###
-    const machine = await getMachineById(machineId);
-    if (!machine) {
-      return (
-        <div role="alert" className="rounded-lg border border-brand-border bg-brand-surface-alt p-4 text-brand-text">
-          登録されていない機械IDです。
-        </div>
-      );
-    }
-
     // 当日のログを取得
     const logs = await getTodayLogs(session.user.id);
     const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
@@ -44,9 +34,7 @@ export default async function NFCPage({ searchParams }: NFCPageProps) {
     // 最後のログが 'IN' なら退勤画面、そうでなければ出勤画面
     const initialStampType = lastLog?.fields.type === 'IN' ? 'OUT' : 'IN';
     const initialWorkDescription = lastLog?.fields.workDescription ?? '';
-
-    const machineIdentifier = (machine.fields.machineid as string | undefined) ?? null;
-    const machineName = machineIdentifier && machineIdentifier.length > 0 ? machineIdentifier : '未登録';
+    const machineName = machineIdParam.trim().length > 0 ? machineIdParam.trim() : '未登録';
 
     return (
       <section className="flex flex-1 items-center justify-center">

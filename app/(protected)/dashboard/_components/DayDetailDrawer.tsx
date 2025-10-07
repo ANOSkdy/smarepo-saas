@@ -9,7 +9,6 @@ type SessionRecord = {
   clockOutAt?: string | null;
   hours?: number | null;
   status: '正常' | '稼働中';
-  machineId?: string | null;
 };
 
 type SessionGroup = {
@@ -240,7 +239,6 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
                               >
                                 <p className="text-xs text-brand-muted sm:text-sm">
                                   {session.siteName ?? '現場未設定'}
-                                  {session.machineId ? ` ／ 機械ID: ${session.machineId}` : ''}
                                 </p>
                                 <div className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-brand-text">
                                   <span>

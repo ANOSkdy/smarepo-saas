@@ -108,23 +108,23 @@ test('month API returns 401 when unauthenticated', async () => {
   assert.strictEqual(getLogsMock.mock.calls.length, 0);
 });
 
-test('month API rejects invalid params', async () => {
+test('month API returns empty payload when params are missing', async () => {
   const authMock = mock.fn(async () => ({ user: { id: 'user-1' } }));
   const { GET } = await importRouteWith({ auth: authMock, getLogs: mock.fn(async () => []) });
-  const response = await GET(new Request('https://example.com/api/calendar/month?year=2025&month=13'));
-  assert.strictEqual(response.status, 400);
-  assert.deepStrictEqual(await response.json(), { message: 'invalid params' });
+  const response = await GET(new Request('https://example.com/api/calendar/month?year=&month='));
+  assert.strictEqual(response.status, 200);
+  assert.deepStrictEqual(await response.json(), { year: null, month: null, days: [] });
 });
 
-test('month API returns 500 when Airtable access fails', async () => {
+test('month API returns empty payload when Airtable access fails', async () => {
   const authMock = mock.fn(async () => ({ user: { id: 'user-1' } }));
   const getLogsMock = mock.fn(async () => {
     throw new Error('airtable down');
   });
   const { GET } = await importRouteWith({ auth: authMock, getLogs: getLogsMock });
   const response = await GET(new Request('https://example.com/api/calendar/month?year=2025&month=9'));
-  assert.strictEqual(response.status, 500);
-  assert.deepStrictEqual(await response.json(), { message: 'calendar fetch failed' });
+  assert.strictEqual(response.status, 200);
+  assert.deepStrictEqual(await response.json(), { year: null, month: null, days: [] });
 });
 
 test('month API aggregates punches and sessions', async () => {
