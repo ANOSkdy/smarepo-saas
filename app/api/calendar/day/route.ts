@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { buildDayDetail, getLogsBetween } from '@/lib/airtable/logs';
+import { buildDayDetail, getLogsBetween, resolveMachineIdForUserOnDate } from '@/lib/airtable/logs';
+
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+function formatJstDateFromMs(timestampMs: number) {
+  return new Date(timestampMs + JST_OFFSET_MS).toISOString().slice(0, 10);
+}
 
 export const runtime = 'nodejs';
 
@@ -43,7 +49,38 @@ export async function GET(req: NextRequest) {
     }
 
     const logs = await getLogsBetween(range);
-    const { sessions } = buildDayDetail(logs);
+    const fallbackTargets = new Map<string, { userId: string; date: string }>();
+
+    for (const log of logs) {
+      if (log.machineId || !log.userId) {
+        continue;
+      }
+      const dateKey = formatJstDateFromMs(log.timestampMs);
+      const cacheKey = `${log.userId}:${dateKey}`;
+      if (!fallbackTargets.has(cacheKey)) {
+        fallbackTargets.set(cacheKey, { userId: log.userId, date: dateKey });
+      }
+    }
+
+    const fallbackResults = new Map<string, string | null>();
+    for (const [cacheKey, target] of fallbackTargets) {
+      fallbackResults.set(cacheKey, await resolveMachineIdForUserOnDate(target.userId, target.date));
+    }
+
+    const enrichedLogs = logs.map((log) => {
+      if (log.machineId || !log.userId) {
+        return log;
+      }
+      const dateKey = formatJstDateFromMs(log.timestampMs);
+      const cacheKey = `${log.userId}:${dateKey}`;
+      const resolved = fallbackResults.get(cacheKey);
+      if (!resolved) {
+        return log;
+      }
+      return { ...log, machineId: resolved };
+    });
+
+    const { sessions } = buildDayDetail(enrichedLogs);
     return NextResponse.json({ date, sessions });
   } catch (error) {
     console.error('[calendar][day] failed to fetch day detail', error);

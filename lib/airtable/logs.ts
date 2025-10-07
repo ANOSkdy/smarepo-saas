@@ -63,6 +63,53 @@ function escapeFormulaValue(value: string) {
   return value.replace(/'/g, "''");
 }
 
+/**
+ * 当日(userId, YYYY-MM-DD)の最初のINログから machineId を解決する。
+ * URLなどにmachineIdが載らない場合のフォールバック用。
+ */
+export async function resolveMachineIdForUserOnDate(
+  userId: string,
+  jstDate: string,
+): Promise<string | null> {
+  const trimmedUserId = userId.trim();
+  if (!trimmedUserId || !jstDate) {
+    return null;
+  }
+  const start = `${jstDate}T00:00:00`;
+  const end = `${jstDate}T23:59:59`;
+  const filterByFormula = `AND({${LOG_FIELDS.type}}='IN',{userId}='${escapeFormulaValue(
+    trimmedUserId,
+  )}',IS_AFTER({${LOG_FIELDS.timestamp}}, '${start}'),IS_BEFORE({${LOG_FIELDS.timestamp}}, '${end}'))`;
+
+  try {
+    const records = await withRetry(() =>
+      logsTable
+        .select({
+          maxRecords: 1,
+          sort: [{ field: LOG_FIELDS.timestamp, direction: 'asc' }],
+          filterByFormula,
+        })
+        .firstPage(),
+    );
+
+    if (records.length === 0) {
+      return null;
+    }
+
+    const machineLink = records[0].get('machine') as string[] | undefined;
+    if (!machineLink?.length) {
+      return null;
+    }
+
+    const machineRecord = await withRetry(() => machinesTable.find(machineLink[0]));
+    const machineIdField = (machineRecord.fields as Record<string, unknown>)['machineid'];
+    return typeof machineIdField === 'string' && machineIdField.length > 0 ? machineIdField : null;
+  } catch (error) {
+    console.error('resolveMachineIdForUserOnDate error:', error);
+    return null;
+  }
+}
+
 async function fetchMachineIdMap(ids: readonly string[]): Promise<Map<string, string>> {
   const unique = Array.from(new Set(ids.filter((id): id is string => typeof id === 'string' && id.length > 0)));
   if (unique.length === 0) {

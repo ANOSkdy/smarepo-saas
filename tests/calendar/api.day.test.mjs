@@ -65,6 +65,7 @@ function resetGlobalMocks() {
   globalThis.__calendarAuthMock = defaultAuth;
   globalThis.__calendarGetLogsMock = defaultGetLogs;
   globalThis.__calendarBuildDayMock = realLogsModule.buildDayDetail;
+  globalThis.__calendarResolveMachineMock = async () => null;
 }
 
 resetGlobalMocks();
@@ -73,6 +74,7 @@ function applyMocks(overrides = {}) {
   if (overrides.auth) globalThis.__calendarAuthMock = overrides.auth;
   if (overrides.getLogs) globalThis.__calendarGetLogsMock = overrides.getLogs;
   if (overrides.buildDay) globalThis.__calendarBuildDayMock = overrides.buildDay;
+  if (overrides.resolveMachine) globalThis.__calendarResolveMachineMock = overrides.resolveMachine;
 }
 
 async function importRouteWith(overrides = {}) {
@@ -87,6 +89,8 @@ async function importRouteWith(overrides = {}) {
       return {
         getLogsBetween: (...args) => globalThis.__calendarGetLogsMock(...args),
         buildDayDetail: (...args) => globalThis.__calendarBuildDayMock(...args),
+        resolveMachineIdForUserOnDate: (...args) =>
+          globalThis.__calendarResolveMachineMock(...args),
       };
     }
     return originalLoad.call(this, request, parent, isMain);
@@ -230,4 +234,52 @@ test('day API returns paired sessions without punches detail', async () => {
   assert.strictEqual('hours' in openSession, false);
   assert.strictEqual(openSession.clockInAt, '21:00');
   assert.strictEqual(openSession.machineId, '1001');
+});
+
+test('day API fills machineId via fallback resolution', async () => {
+  const authMock = mock.fn(async () => ({ user: { id: 'user-1' } }));
+  const baseLogs = [
+    {
+      id: 'log-a',
+      type: 'IN',
+      timestamp: '2025-09-01T00:00:00.000Z',
+      timestampMs: Date.parse('2025-09-01T00:00:00.000Z'),
+      userId: 'user-1',
+      userName: 'suzuki',
+      siteId: null,
+      siteName: null,
+      workType: null,
+      note: null,
+      machineId: null,
+    },
+    {
+      id: 'log-b',
+      type: 'OUT',
+      timestamp: '2025-09-01T03:00:00.000Z',
+      timestampMs: Date.parse('2025-09-01T03:00:00.000Z'),
+      userId: 'user-1',
+      userName: 'suzuki',
+      siteId: null,
+      siteName: null,
+      workType: null,
+      note: null,
+      machineId: null,
+    },
+  ];
+  const getLogsMock = mock.fn(async () => baseLogs);
+  const resolveMachineMock = mock.fn(async () => 'resolved-60163');
+  const { GET } = await importRouteWith({
+    auth: authMock,
+    getLogs: getLogsMock,
+    resolveMachine: resolveMachineMock,
+  });
+  const response = await GET(new Request('https://example.com/api/calendar/day?date=2025-09-01'));
+  assert.strictEqual(response.status, 200);
+  const body = await response.json();
+  assert.ok(Array.isArray(body.sessions));
+  assert.strictEqual(body.sessions.length, 1);
+  assert.strictEqual(body.sessions[0].machineId, 'resolved-60163');
+  assert.strictEqual(resolveMachineMock.mock.calls.length, 1);
+  const [{ arguments: resolveArgs }] = resolveMachineMock.mock.calls;
+  assert.deepStrictEqual(resolveArgs, ['user-1', '2025-09-01']);
 });
