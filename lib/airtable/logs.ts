@@ -1,6 +1,6 @@
 import { Record as AirtableRecord } from 'airtable';
-import { logsTable } from '@/lib/airtable';
-import type { LogFields } from '@/types';
+import { logsTable, machinesTable } from '@/lib/airtable';
+import type { LogFields, MachineFields } from '@/types';
 import { getUsersMap } from './users';
 import { AIRTABLE_PAGE_SIZE, JST_OFFSET, LOG_FIELDS } from './schema';
 
@@ -18,6 +18,8 @@ export type NormalizedLog = {
   siteName: string | null;
   workType: string | null;
   note: string | null;
+  machineRecordId: string | null;
+  machineId: string | null;
 };
 
 export type CalendarDaySummary = {
@@ -37,10 +39,12 @@ export type SessionDetail = {
   clockOutAt?: string;
   hours?: number;
   status: SessionStatus;
+  machineId?: string | null;
 };
 
 const RETRY_LIMIT = 3;
 const RETRY_DELAY = 500;
+const MACHINE_BATCH_SIZE = 10;
 
 async function withRetry<T>(factory: () => Promise<T>, attempt = 0): Promise<T> {
   try {
@@ -53,6 +57,40 @@ async function withRetry<T>(factory: () => Promise<T>, attempt = 0): Promise<T> 
     await new Promise((resolve) => setTimeout(resolve, delay));
     return withRetry(factory, attempt + 1);
   }
+}
+
+function escapeFormulaValue(value: string) {
+  return value.replace(/'/g, "''");
+}
+
+async function fetchMachineIdMap(ids: readonly string[]): Promise<Map<string, string>> {
+  const unique = Array.from(new Set(ids.filter((id): id is string => typeof id === 'string' && id.length > 0)));
+  if (unique.length === 0) {
+    return new Map();
+  }
+
+  const map = new Map<string, string>();
+  for (let index = 0; index < unique.length; index += MACHINE_BATCH_SIZE) {
+    const slice = unique.slice(index, index + MACHINE_BATCH_SIZE);
+    const filterByFormula = `OR(${slice.map((id) => `RECORD_ID()='${escapeFormulaValue(id)}'`).join(',')})`;
+    const records = await withRetry(() =>
+      machinesTable
+        .select({
+          filterByFormula,
+          fields: ['machineid'],
+          pageSize: slice.length,
+        })
+        .all(),
+    );
+    for (const record of records) {
+      const fields = record.fields as MachineFields;
+      if (typeof fields.machineid === 'string' && fields.machineid.length > 0) {
+        map.set(record.id, fields.machineid);
+      }
+    }
+  }
+
+  return map;
 }
 
 function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | null {
@@ -75,6 +113,9 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
   const userIdField = typeof fields['userId'] === 'string' ? (fields['userId'] as string) : null;
   const siteLinks = Array.isArray(fields[LOG_FIELDS.site])
     ? (fields[LOG_FIELDS.site] as readonly string[])
+    : [];
+  const machineLinks = Array.isArray(fields['machine'])
+    ? (fields['machine'] as readonly string[])
     : [];
   const userName = typeof fields[LOG_FIELDS.userName] === 'string'
     ? (fields[LOG_FIELDS.userName] as string)
@@ -126,6 +167,13 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
     siteName,
     workType,
     note,
+    machineRecordId: machineLinks.length > 0 ? String(machineLinks[0]) : null,
+    machineId:
+      typeof fields['machineId'] === 'string'
+        ? (fields['machineId'] as string)
+        : typeof fields['machineid'] === 'string'
+        ? (fields['machineid'] as string)
+        : null,
   };
 }
 
@@ -145,14 +193,31 @@ export async function getLogsBetween(params: { from: Date; to: Date }): Promise<
       .all(),
   );
 
-  const logs = records
+  const normalized = records
     .map((record) => toNormalizedLog(record))
-    .filter((log): log is NormalizedLog => Boolean(log))
-    .sort((a, b) => a.timestampMs - b.timestampMs);
+    .filter((log): log is NormalizedLog => Boolean(log));
 
-  if (logs.length === 0) {
-    return logs;
+  if (normalized.length === 0) {
+    return normalized;
   }
+
+  const machineLookupIds = normalized
+    .filter((log) => !log.machineId && log.machineRecordId)
+    .map((log) => log.machineRecordId as string);
+  const machineIdMap = machineLookupIds.length > 0 ? await fetchMachineIdMap(machineLookupIds) : new Map();
+
+  const logs = normalized
+    .map((log) => {
+      if (log.machineId || !log.machineRecordId) {
+        return log;
+      }
+      const resolved = machineIdMap.get(log.machineRecordId) ?? null;
+      if (!resolved) {
+        return log;
+      }
+      return { ...log, machineId: resolved } as NormalizedLog;
+    })
+    .sort((a, b) => a.timestampMs - b.timestampMs);
 
   const usersMap = await getUsersMap();
 
@@ -220,6 +285,7 @@ function createOpenSession(source: NormalizedLog): SessionDetail {
     siteName: source.siteName ?? null,
     clockInAt: formatJstTime(source.timestampMs),
     status: '稼働中',
+    machineId: source.machineId ?? null,
   };
 }
 
@@ -259,6 +325,7 @@ function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
       clockOutAt: formatJstTime(log.timestampMs),
       hours: roundHours(durationHours),
       status: '正常',
+      machineId: currentOpen.machineId ?? log.machineId ?? null,
     });
     openSessions.set(userKey, null);
   }

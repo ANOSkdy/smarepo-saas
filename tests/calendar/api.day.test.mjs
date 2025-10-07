@@ -130,6 +130,7 @@ test('day API returns paired sessions without punches detail', async () => {
       siteName: '札幌第一',
       workType: '溶接',
       note: null,
+      machineId: '1001',
     },
     {
       id: 'log-2',
@@ -142,6 +143,7 @@ test('day API returns paired sessions without punches detail', async () => {
       siteName: '札幌第一',
       workType: '溶接',
       note: '現地確認',
+      machineId: '1001',
     },
     {
       id: 'log-3',
@@ -166,6 +168,7 @@ test('day API returns paired sessions without punches detail', async () => {
       siteName: '帯広東',
       workType: null,
       note: null,
+      machineId: '2002',
     },
     {
       id: 'log-5',
@@ -178,6 +181,7 @@ test('day API returns paired sessions without punches detail', async () => {
       siteName: '帯広東',
       workType: null,
       note: null,
+      machineId: '2002',
     },
     {
       id: 'log-6',
@@ -190,6 +194,7 @@ test('day API returns paired sessions without punches detail', async () => {
       siteName: '札幌第一',
       workType: '溶接',
       note: null,
+      machineId: '1001',
     },
   ];
   const getLogsMock = mock.fn(async () => baseLogs);
@@ -207,10 +212,12 @@ test('day API returns paired sessions without punches detail', async () => {
   assert.strictEqual(firstSession.clockOutAt, '16:30');
   assert.strictEqual(firstSession.hours, 7.5);
   assert.strictEqual(firstSession.status, '正常');
+  assert.strictEqual(firstSession.machineId, '1001');
   const secondSession = body.sessions[1];
   assert.strictEqual(secondSession.userName, 'sato');
   assert.strictEqual(secondSession.hours, 7);
   assert.strictEqual(secondSession.status, '正常');
+  assert.strictEqual(secondSession.machineId, '2002');
   const hasClosed = body.sessions.some((session) => session.status === '正常');
   assert.ok(hasClosed, 'closed session should exist');
   const hasOpen = body.sessions.some(
@@ -222,4 +229,5 @@ test('day API returns paired sessions without punches detail', async () => {
   assert.strictEqual('clockOutAt' in openSession, false);
   assert.strictEqual('hours' in openSession, false);
   assert.strictEqual(openSession.clockInAt, '21:00');
+  assert.strictEqual(openSession.machineId, '1001');
 });

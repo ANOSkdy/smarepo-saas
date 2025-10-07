@@ -26,7 +26,7 @@ export default function RootLayout({
                 ダッシュボード
               </Link>
               <Link href="/nfc" className="tap-target text-brand-primary hover:text-brand-primary/80">
-                NFC打刻
+                打刻ページ
               </Link>
             </nav>
           </div>
