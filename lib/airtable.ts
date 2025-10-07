@@ -7,15 +7,24 @@ import {
   LogFields,
 } from '@/types';
 
-// 環境変数が設定されていない場合にエラーを投げる
-if (!process.env.AIRTABLE_API_KEY || !process.env.AIRTABLE_BASE_ID) {
-  throw new Error('Airtable API Key or Base ID is not defined in .env.local');
+export const LOGS_TABLE = 'Logs';
+export const MACHINES_TABLE = 'Machines';
+export const WORKTYPES_TABLE = 'WorkTypes';
+
+const apiKey = process.env.AIRTABLE_API_KEY;
+const baseId = process.env.AIRTABLE_BASE_ID;
+
+if (!apiKey || !baseId) {
+  throw new Error(
+    [
+      'Airtable env missing.',
+      `AIRTABLE_API_KEY=${apiKey ? '[set]' : '[missing]'}`,
+      `AIRTABLE_BASE_ID=${baseId ? '[set]' : '[missing]'}`,
+    ].join(' ')
+  );
 }
 
-// Airtableの基本設定を初期化
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
-  process.env.AIRTABLE_BASE_ID
-);
+export const base = new Airtable({ apiKey }).base(baseId);
 
 // 型付けされたテーブルを返すヘルパー関数
 const getTypedTable = <T extends FieldSet>(tableName: string): Table<T> => {
