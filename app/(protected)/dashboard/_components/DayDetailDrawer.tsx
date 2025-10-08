@@ -9,7 +9,7 @@ type SessionRecord = {
   clockOutAt?: string | null;
   hours?: number | null;
   status: '正常' | '稼働中';
-  machineId?: string;
+  machineId: string | null | undefined;
 };
 
 type SessionGroup = {
@@ -235,6 +235,8 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
                           {group.items.map((session, index) => {
                             const statusClass =
                               session.status === '稼働中' ? 'text-amber-600' : 'text-brand-primary';
+                            const machineIdLabel =
+                              typeof session.machineId === 'string' ? session.machineId.trim() : '';
                             return (
                               <div
                                 key={`${session.userName}-${session.clockInAt}-${index}`}
@@ -253,7 +255,9 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
                                 </div>
                                 <div className="mt-1 text-sm text-brand-text">
                                   <span className="mr-2 opacity-70">機械</span>
-                                  <span className="tabular-nums">{session.machineId ?? '-'}</span>
+                                  <span className="tabular-nums">
+                                    {machineIdLabel.length > 0 ? machineIdLabel : '-'}
+                                  </span>
                                 </div>
                               </div>
                             );
