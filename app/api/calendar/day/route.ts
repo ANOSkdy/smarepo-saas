@@ -1,81 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { buildDayDetail, getLogsBetween, type NormalizedLog } from '@/lib/airtable/logs';
-
-type MachineLogExtras = {
-  machine?: string | number | null;
-  machineId?: string | number | null;
-  machineid?: string | number | null;
-  fields?: Record<string, unknown> | null;
-};
-
-function normalizeMachineId(raw: unknown): string | undefined {
-  if (raw === undefined || raw === null) {
-    return undefined;
-  }
-  const value = String(raw).trim();
-  return value.length === 0 ? undefined : value;
-}
-
-function extractMachineId(log: NormalizedLog): string | undefined {
-  const extras = log as NormalizedLog & MachineLogExtras;
-  const direct =
-    normalizeMachineId(extras.machine) ??
-    normalizeMachineId(extras.machineId) ??
-    normalizeMachineId(extras.machineid);
-  if (direct) {
-    return direct;
-  }
-  const { fields } = extras;
-  if (!fields || typeof fields !== 'object') {
-    return undefined;
-  }
-  const record = fields as Record<string, unknown>;
-  return (
-    normalizeMachineId(record.machine) ??
-    normalizeMachineId(record.machineId) ??
-    normalizeMachineId(record.machineid)
-  );
-}
-
-function collectMachineAssignments(logs: NormalizedLog[]): (string | undefined)[] {
-  type OpenSessionState = { log: NormalizedLog; machineId?: string } | null;
-  const sorted = [...logs].sort((a, b) => a.timestampMs - b.timestampMs);
-  const openSessions = new Map<string, OpenSessionState>();
-  const machineQueue: (string | undefined)[] = [];
-
-  for (const log of sorted) {
-    const userKey = log.userId ?? log.userName ?? 'unknown-user';
-    const currentOpen = openSessions.get(userKey) ?? null;
-
-    if (log.type === 'IN') {
-      if (currentOpen) {
-        machineQueue.push(currentOpen.machineId);
-      }
-      openSessions.set(userKey, { log, machineId: extractMachineId(log) });
-      continue;
-    }
-
-    if (!currentOpen) {
-      continue;
-    }
-
-    if (log.timestampMs <= currentOpen.log.timestampMs) {
-      continue;
-    }
-
-    machineQueue.push(currentOpen.machineId);
-    openSessions.set(userKey, null);
-  }
-
-  for (const [, pending] of openSessions) {
-    if (pending) {
-      machineQueue.push(pending.machineId);
-    }
-  }
-
-  return machineQueue;
-}
+import { buildDayDetail, getLogsBetween } from '@/lib/airtable/logs';
 
 export const runtime = 'nodejs';
 
@@ -118,13 +43,13 @@ export async function GET(req: NextRequest) {
     }
 
     const logs = await getLogsBetween(range);
-    const machineAssignments = collectMachineAssignments(logs);
     const { sessions } = buildDayDetail(logs);
-    const sessionsWithMachine = sessions.map((session, index) => ({
+    const normalizedSessions = sessions.map((session) => ({
       ...session,
-      machineId: machineAssignments[index],
+      userName: session.userName ?? '未登録ユーザー',
+      machineId: session.machineId ?? null,
     }));
-    return NextResponse.json({ date, sessions: sessionsWithMachine });
+    return NextResponse.json({ date, sessions: normalizedSessions });
   } catch (error) {
     console.error('[calendar][day] failed to fetch day detail', error);
     return errorResponse('INTERNAL_ERROR', 500);

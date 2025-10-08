@@ -14,6 +14,7 @@ export type NormalizedLog = {
   userId: string | null;
   userName: string | null;
   userLookupKeys: string[];
+  machineId: string | null;
   siteId: string | null;
   siteName: string | null;
   workType: string | null;
@@ -37,6 +38,7 @@ export type SessionDetail = {
   clockOutAt?: string;
   hours?: number;
   status: SessionStatus;
+  machineId: string | null;
 };
 
 const RETRY_LIMIT = 3;
@@ -52,6 +54,14 @@ async function withRetry<T>(factory: () => Promise<T>, attempt = 0): Promise<T> 
     await new Promise((resolve) => setTimeout(resolve, delay));
     return withRetry(factory, attempt + 1);
   }
+}
+
+function normalizeMachineIdentifier(raw: unknown): string | null {
+  if (raw === undefined || raw === null) {
+    return null;
+  }
+  const value = String(raw).trim();
+  return value.length === 0 ? null : value;
 }
 
 function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | null {
@@ -97,6 +107,10 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
     const rawEmail = fields['userEmail'] ?? fields['email'];
     return typeof rawEmail === 'string' ? rawEmail : null;
   })();
+  const machineId =
+    normalizeMachineIdentifier(fields[LOG_FIELDS.machineId]) ??
+    normalizeMachineIdentifier(fields[LOG_FIELDS.machineid]) ??
+    normalizeMachineIdentifier(fields[LOG_FIELDS.machine]);
 
   const lookupKeys = new Set<string>();
   if (userLinks.length > 0) {
@@ -121,6 +135,7 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
     userId: userLinks.length > 0 ? String(userLinks[0]) : null,
     userName,
     userLookupKeys: Array.from(lookupKeys),
+    machineId,
     siteId: siteLinks.length > 0 ? String(siteLinks[0]) : null,
     siteName,
     workType,
@@ -179,6 +194,7 @@ export async function getLogsBetween(params: { from: Date; to: Date }): Promise<
     return {
       ...log,
       userName: resolvedName ?? '未登録ユーザー',
+      machineId: log.machineId ?? null,
     };
   });
 }
@@ -219,6 +235,7 @@ function createOpenSession(source: NormalizedLog): SessionDetail {
     siteName: source.siteName ?? null,
     clockInAt: formatJstTime(source.timestampMs),
     status: '稼働中',
+    machineId: source.machineId ?? null,
   };
 }
 
@@ -258,6 +275,7 @@ function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
       clockOutAt: formatJstTime(log.timestampMs),
       hours: roundHours(durationHours),
       status: '正常',
+      machineId: currentOpen.machineId ?? log.machineId ?? null,
     });
     openSessions.set(userKey, null);
   }
