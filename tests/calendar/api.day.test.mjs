@@ -232,7 +232,7 @@ test('day API returns paired sessions without punches detail', async () => {
   assert.strictEqual(openSession.machineId, '1001');
 });
 
-test('day API resolves machineId from raw fields when absent on log root', async () => {
+test('day API returns machineId from lookup field', async () => {
   const authMock = mock.fn(async () => ({ user: { id: 'user-1' } }));
   const inTimestamp = '2025-09-02T00:00:00.000Z';
   const outTimestamp = '2025-09-02T06:00:00.000Z';
@@ -243,12 +243,16 @@ test('day API resolves machineId from raw fields when absent on log root', async
       timestamp: inTimestamp,
       timestampMs: Date.parse(inTimestamp),
       userId: 'user-3',
-      userName: 'tanaka',
+      userName: null,
       siteId: null,
       siteName: null,
       workType: null,
       note: null,
-      fields: { machineid: '3003' },
+      machineId: null,
+      rawFields: {
+        'machineId (from machine)': ['3003'],
+        'userName (from user)': ['tanaka'],
+      },
     },
     {
       id: 'log-2',
@@ -256,12 +260,16 @@ test('day API resolves machineId from raw fields when absent on log root', async
       timestamp: outTimestamp,
       timestampMs: Date.parse(outTimestamp),
       userId: 'user-3',
-      userName: 'tanaka',
+      userName: null,
       siteId: null,
       siteName: null,
       workType: null,
       note: null,
-      fields: {},
+      machineId: null,
+      rawFields: {
+        'machineId (from machine)': ['3003'],
+        'userName (from user)': ['tanaka'],
+      },
     },
   ];
   const getLogsMock = mock.fn(async () => logs);
@@ -272,4 +280,5 @@ test('day API resolves machineId from raw fields when absent on log root', async
   assert.ok(Array.isArray(body.sessions));
   assert.strictEqual(body.sessions.length, 1);
   assert.strictEqual(body.sessions[0].machineId, '3003');
+  assert.strictEqual(body.sessions[0].userName, 'tanaka');
 });

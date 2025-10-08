@@ -1,81 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { buildDayDetail, getLogsBetween, type NormalizedLog } from '@/lib/airtable/logs';
-
-type MachineLogExtras = {
-  machine?: string | number | null;
-  machineId?: string | number | null;
-  machineid?: string | number | null;
-  fields?: Record<string, unknown> | null;
-};
-
-function normalizeMachineId(raw: unknown): string | undefined {
-  if (raw === undefined || raw === null) {
-    return undefined;
-  }
-  const value = String(raw).trim();
-  return value.length === 0 ? undefined : value;
-}
-
-function extractMachineId(log: NormalizedLog): string | undefined {
-  const extras = log as NormalizedLog & MachineLogExtras;
-  const direct =
-    normalizeMachineId(extras.machine) ??
-    normalizeMachineId(extras.machineId) ??
-    normalizeMachineId(extras.machineid);
-  if (direct) {
-    return direct;
-  }
-  const { fields } = extras;
-  if (!fields || typeof fields !== 'object') {
-    return undefined;
-  }
-  const record = fields as Record<string, unknown>;
-  return (
-    normalizeMachineId(record.machine) ??
-    normalizeMachineId(record.machineId) ??
-    normalizeMachineId(record.machineid)
-  );
-}
-
-function collectMachineAssignments(logs: NormalizedLog[]): (string | undefined)[] {
-  type OpenSessionState = { log: NormalizedLog; machineId?: string } | null;
-  const sorted = [...logs].sort((a, b) => a.timestampMs - b.timestampMs);
-  const openSessions = new Map<string, OpenSessionState>();
-  const machineQueue: (string | undefined)[] = [];
-
-  for (const log of sorted) {
-    const userKey = log.userId ?? log.userName ?? 'unknown-user';
-    const currentOpen = openSessions.get(userKey) ?? null;
-
-    if (log.type === 'IN') {
-      if (currentOpen) {
-        machineQueue.push(currentOpen.machineId);
-      }
-      openSessions.set(userKey, { log, machineId: extractMachineId(log) });
-      continue;
-    }
-
-    if (!currentOpen) {
-      continue;
-    }
-
-    if (log.timestampMs <= currentOpen.log.timestampMs) {
-      continue;
-    }
-
-    machineQueue.push(currentOpen.machineId);
-    openSessions.set(userKey, null);
-  }
-
-  for (const [, pending] of openSessions) {
-    if (pending) {
-      machineQueue.push(pending.machineId);
-    }
-  }
-
-  return machineQueue;
-}
+import { buildDayDetail, getLogsBetween } from '@/lib/airtable/logs';
 
 export const runtime = 'nodejs';
 
@@ -99,6 +24,53 @@ function resolveDayRange(date: string) {
   return { from, to };
 }
 
+function normalizeLookupText(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const normalized = normalizeLookupText(entry);
+      if (normalized) {
+        return normalized;
+      }
+    }
+    return null;
+  }
+  const trimmed = String(value).trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  return trimmed;
+}
+
+function normalizeMachineId(value: unknown): string | null {
+  const trimmed = normalizeLookupText(value);
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (typeof item === 'string') {
+            const normalized = normalizeMachineId(item);
+            if (normalized) {
+              return normalized;
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore JSON parse errors and fall back to raw string handling
+    }
+  }
+  const [first] = trimmed.split(',');
+  const normalized = first.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -118,13 +90,60 @@ export async function GET(req: NextRequest) {
     }
 
     const logs = await getLogsBetween(range);
-    const machineAssignments = collectMachineAssignments(logs);
     const { sessions } = buildDayDetail(logs);
-    const sessionsWithMachine = sessions.map((session, index) => ({
-      ...session,
-      machineId: machineAssignments[index],
-    }));
-    return NextResponse.json({ date, sessions: sessionsWithMachine });
+
+    const logById = new Map(logs.map((log) => [log.id, log] as const));
+    const userLookupCandidates = ['userName', 'username', 'userName (from user)', 'name (from user)'] as const;
+    const machineLookupCandidates = [
+      'machineId',
+      'machineid',
+      'machineId (from machine)',
+      'machineid (from machine)',
+    ] as const;
+
+    const readLookup = (
+      fields: Record<string, unknown> | undefined,
+      candidates: readonly string[],
+      normalizer: (value: unknown) => string | null,
+    ): string | null => {
+      if (!fields) {
+        return null;
+      }
+      for (const key of candidates) {
+        if (!Object.prototype.hasOwnProperty.call(fields, key)) {
+          continue;
+        }
+        const normalized = normalizer(fields[key]);
+        if (normalized) {
+          return normalized;
+        }
+      }
+      return null;
+    };
+
+    const sessionsWithLookup = sessions.map((session) => {
+      const startLog = logById.get(session.startLogId);
+      const endLog = session.endLogId ? logById.get(session.endLogId) : undefined;
+
+      const userName =
+        readLookup(startLog?.rawFields, userLookupCandidates, normalizeLookupText) ??
+        readLookup(endLog?.rawFields, userLookupCandidates, normalizeLookupText) ??
+        session.userName ??
+        '未登録ユーザー';
+
+      const machineId =
+        readLookup(startLog?.rawFields, machineLookupCandidates, normalizeMachineId) ??
+        readLookup(endLog?.rawFields, machineLookupCandidates, normalizeMachineId) ??
+        normalizeMachineId(session.machineId);
+
+      return {
+        ...session,
+        userName,
+        machineId,
+      };
+    });
+
+    return NextResponse.json({ date, sessions: sessionsWithLookup });
   } catch (error) {
     console.error('[calendar][day] failed to fetch day detail', error);
     return errorResponse('INTERNAL_ERROR', 500);
