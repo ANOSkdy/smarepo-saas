@@ -24,26 +24,29 @@ function resolveDayRange(date: string) {
   return { from, to };
 }
 
-function normalizeMachineId(
-  value: string | readonly string[] | null | undefined,
-): string | null {
+function normalizeLookupText(value: unknown): string | null {
   if (value === null || value === undefined) {
     return null;
   }
   if (Array.isArray(value)) {
     for (const entry of value) {
-      const normalized = normalizeMachineId(entry);
+      const normalized = normalizeLookupText(entry);
       if (normalized) {
         return normalized;
       }
     }
     return null;
   }
-  if (typeof value !== 'string') {
+  const trimmed = String(value).trim();
+  if (trimmed.length === 0) {
     return null;
   }
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
+  return trimmed;
+}
+
+function normalizeMachineId(value: unknown): string | null {
+  const trimmed = normalizeLookupText(value);
+  if (!trimmed) {
     return null;
   }
   if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
@@ -88,12 +91,59 @@ export async function GET(req: NextRequest) {
 
     const logs = await getLogsBetween(range);
     const { sessions } = buildDayDetail(logs);
-    const normalizedSessions = sessions.map((session) => ({
-      ...session,
-      userName: session.userName ?? '未登録ユーザー',
-      machineId: normalizeMachineId(session.machineId),
-    }));
-    return NextResponse.json({ date, sessions: normalizedSessions });
+
+    const logById = new Map(logs.map((log) => [log.id, log] as const));
+    const userLookupCandidates = ['userName', 'username', 'userName (from user)', 'name (from user)'] as const;
+    const machineLookupCandidates = [
+      'machineId',
+      'machineid',
+      'machineId (from machine)',
+      'machineid (from machine)',
+    ] as const;
+
+    const readLookup = (
+      fields: Record<string, unknown> | undefined,
+      candidates: readonly string[],
+      normalizer: (value: unknown) => string | null,
+    ): string | null => {
+      if (!fields) {
+        return null;
+      }
+      for (const key of candidates) {
+        if (!Object.prototype.hasOwnProperty.call(fields, key)) {
+          continue;
+        }
+        const normalized = normalizer(fields[key]);
+        if (normalized) {
+          return normalized;
+        }
+      }
+      return null;
+    };
+
+    const sessionsWithLookup = sessions.map((session) => {
+      const startLog = logById.get(session.startLogId);
+      const endLog = session.endLogId ? logById.get(session.endLogId) : undefined;
+
+      const userName =
+        readLookup(startLog?.rawFields, userLookupCandidates, normalizeLookupText) ??
+        readLookup(endLog?.rawFields, userLookupCandidates, normalizeLookupText) ??
+        session.userName ??
+        '未登録ユーザー';
+
+      const machineId =
+        readLookup(startLog?.rawFields, machineLookupCandidates, normalizeMachineId) ??
+        readLookup(endLog?.rawFields, machineLookupCandidates, normalizeMachineId) ??
+        normalizeMachineId(session.machineId);
+
+      return {
+        ...session,
+        userName,
+        machineId,
+      };
+    });
+
+    return NextResponse.json({ date, sessions: sessionsWithLookup });
   } catch (error) {
     console.error('[calendar][day] failed to fetch day detail', error);
     return errorResponse('INTERNAL_ERROR', 500);

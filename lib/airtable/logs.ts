@@ -19,6 +19,7 @@ export type NormalizedLog = {
   siteName: string | null;
   workType: string | null;
   note: string | null;
+  rawFields: Record<string, unknown>;
 };
 
 export type CalendarDaySummary = {
@@ -32,6 +33,11 @@ export type CalendarDaySummary = {
 export type SessionStatus = '正常' | '稼働中';
 
 export type SessionDetail = {
+  userId: string | null;
+  startMs: number;
+  endMs?: number;
+  startLogId: string;
+  endLogId?: string;
   userName: string;
   siteName: string | null;
   clockInAt: string;
@@ -56,12 +62,78 @@ async function withRetry<T>(factory: () => Promise<T>, attempt = 0): Promise<T> 
   }
 }
 
-function normalizeMachineIdentifier(raw: unknown): string | null {
-  if (raw === undefined || raw === null) {
+const MACHINE_ID_LOOKUP_FIELDS = [
+  LOG_FIELDS.machineId,
+  LOG_FIELDS.machineid,
+  LOG_FIELDS.machineIdFromMachine,
+  LOG_FIELDS.machineidFromMachine,
+] as const;
+
+const USER_NAME_LOOKUP_FIELDS = [
+  LOG_FIELDS.userName,
+  LOG_FIELDS.username,
+  LOG_FIELDS.userNameFromUser,
+  LOG_FIELDS.nameFromUser,
+] as const;
+
+function normalizeLookupText(raw: unknown): string | null {
+  if (raw === null || raw === undefined) {
     return null;
   }
-  const value = String(raw).trim();
-  return value.length === 0 ? null : value;
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      const normalized = normalizeLookupText(entry);
+      if (normalized) {
+        return normalized;
+      }
+    }
+    return null;
+  }
+  const text = String(raw).trim();
+  return text.length === 0 ? null : text;
+}
+
+function normalizeMachineIdentifier(raw: unknown): string | null {
+  const text = normalizeLookupText(raw);
+  if (!text) {
+    return null;
+  }
+  if (text.startsWith('[') && text.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          const normalized = normalizeMachineIdentifier(item);
+          if (normalized) {
+            return normalized;
+          }
+        }
+      }
+    } catch {
+      // ignore JSON parse errors and fall back to trimmed text handling
+    }
+  }
+  const [first] = text.split(',');
+  const normalized = first.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function readLookupField(
+  fields: Record<string, unknown>,
+  keys: readonly string[],
+  normalizer: (value: unknown) => string | null,
+): string | null {
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(fields, key)) {
+      continue;
+    }
+    const value = fields[key];
+    const normalized = normalizer(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
 }
 
 function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | null {
@@ -85,11 +157,7 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
   const siteLinks = Array.isArray(fields[LOG_FIELDS.site])
     ? (fields[LOG_FIELDS.site] as readonly string[])
     : [];
-  const userName = typeof fields[LOG_FIELDS.userName] === 'string'
-    ? (fields[LOG_FIELDS.userName] as string)
-    : typeof fields[LOG_FIELDS.username] === 'string'
-    ? (fields[LOG_FIELDS.username] as string)
-    : null;
+  const userName = readLookupField(fields, USER_NAME_LOOKUP_FIELDS, normalizeLookupText);
   const fallbackSiteName = fields['sitename'];
   const siteName = typeof fields[LOG_FIELDS.siteName] === 'string'
     ? (fields[LOG_FIELDS.siteName] as string)
@@ -107,10 +175,7 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
     const rawEmail = fields['userEmail'] ?? fields['email'];
     return typeof rawEmail === 'string' ? rawEmail : null;
   })();
-  const machineId =
-    normalizeMachineIdentifier(fields[LOG_FIELDS.machineId]) ??
-    normalizeMachineIdentifier(fields[LOG_FIELDS.machineid]) ??
-    normalizeMachineIdentifier(fields[LOG_FIELDS.machine]);
+  const machineId = readLookupField(fields, MACHINE_ID_LOOKUP_FIELDS, normalizeMachineIdentifier);
 
   const lookupKeys = new Set<string>();
   if (userLinks.length > 0) {
@@ -140,6 +205,7 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
     siteName,
     workType,
     note,
+    rawFields: fields,
   };
 }
 
@@ -231,6 +297,9 @@ function roundHours(value: number) {
 
 function createOpenSession(source: NormalizedLog): SessionDetail {
   return {
+    userId: source.userId,
+    startMs: source.timestampMs,
+    startLogId: source.id,
     userName: source.userName ?? '未登録ユーザー',
     siteName: source.siteName ?? null,
     clockInAt: formatJstTime(source.timestampMs),
@@ -269,6 +338,11 @@ function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
 
     const durationHours = (log.timestampMs - currentOpen.timestampMs) / (1000 * 60 * 60);
     sessions.push({
+      userId: currentOpen.userId ?? log.userId ?? null,
+      startMs: currentOpen.timestampMs,
+      endMs: log.timestampMs,
+      startLogId: currentOpen.id,
+      endLogId: log.id,
       userName: currentOpen.userName ?? log.userName ?? '未登録ユーザー',
       siteName: currentOpen.siteName ?? log.siteName ?? null,
       clockInAt: formatJstTime(currentOpen.timestampMs),

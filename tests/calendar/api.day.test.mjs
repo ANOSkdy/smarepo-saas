@@ -243,12 +243,16 @@ test('day API returns machineId from lookup field', async () => {
       timestamp: inTimestamp,
       timestampMs: Date.parse(inTimestamp),
       userId: 'user-3',
-      userName: 'tanaka',
+      userName: null,
       siteId: null,
       siteName: null,
       workType: null,
       note: null,
-      machineId: '3003',
+      machineId: null,
+      rawFields: {
+        'machineId (from machine)': ['3003'],
+        'userName (from user)': ['tanaka'],
+      },
     },
     {
       id: 'log-2',
@@ -256,12 +260,16 @@ test('day API returns machineId from lookup field', async () => {
       timestamp: outTimestamp,
       timestampMs: Date.parse(outTimestamp),
       userId: 'user-3',
-      userName: 'tanaka',
+      userName: null,
       siteId: null,
       siteName: null,
       workType: null,
       note: null,
       machineId: null,
+      rawFields: {
+        'machineId (from machine)': ['3003'],
+        'userName (from user)': ['tanaka'],
+      },
     },
   ];
   const getLogsMock = mock.fn(async () => logs);
@@ -272,4 +280,5 @@ test('day API returns machineId from lookup field', async () => {
   assert.ok(Array.isArray(body.sessions));
   assert.strictEqual(body.sessions.length, 1);
   assert.strictEqual(body.sessions[0].machineId, '3003');
+  assert.strictEqual(body.sessions[0].userName, 'tanaka');
 });
