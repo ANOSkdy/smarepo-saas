@@ -227,7 +227,7 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
                         className="rounded-2xl border border-brand-border bg-brand-surface-alt p-4 shadow-sm sm:p-5"
                       >
                         <div className="flex items-center justify-between">
-                          <p className="text-[15px] font-semibold text-brand-text text-black sm:text-base">
+                          <p className="text-[15px] font-semibold text-brand-text !text-black !opacity-100 sm:text-base">
                             {group.userName}
                           </p>
                         </div>

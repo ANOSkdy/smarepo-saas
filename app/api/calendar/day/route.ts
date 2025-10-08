@@ -3,27 +3,39 @@ import { auth } from '@/lib/auth';
 import { buildDayDetail, getLogsBetween, type NormalizedLog } from '@/lib/airtable/logs';
 
 type MachineLogExtras = {
-  machineId?: string | null;
-  machineid?: string | null;
+  machine?: string | number | null;
+  machineId?: string | number | null;
+  machineid?: string | number | null;
   fields?: Record<string, unknown> | null;
 };
 
+function normalizeMachineId(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+  const value = String(raw).trim();
+  return value.length === 0 ? undefined : value;
+}
+
 function extractMachineId(log: NormalizedLog): string | undefined {
   const extras = log as NormalizedLog & MachineLogExtras;
-  const direct = extras.machineId ?? extras.machineid;
-  if (typeof direct === 'string' && direct.trim().length > 0) {
-    return direct.trim();
+  const direct =
+    normalizeMachineId(extras.machine) ??
+    normalizeMachineId(extras.machineId) ??
+    normalizeMachineId(extras.machineid);
+  if (direct) {
+    return direct;
   }
-  const fromFields = (() => {
-    const { fields } = extras;
-    if (!fields || typeof fields !== 'object') {
-      return undefined;
-    }
-    const record = fields as Record<string, unknown>;
-    const raw = (record.machineId ?? record.machineid) as unknown;
-    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : undefined;
-  })();
-  return fromFields;
+  const { fields } = extras;
+  if (!fields || typeof fields !== 'object') {
+    return undefined;
+  }
+  const record = fields as Record<string, unknown>;
+  return (
+    normalizeMachineId(record.machine) ??
+    normalizeMachineId(record.machineId) ??
+    normalizeMachineId(record.machineid)
+  );
 }
 
 function collectMachineAssignments(logs: NormalizedLog[]): (string | undefined)[] {
