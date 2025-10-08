@@ -13,9 +13,6 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
           <Link href="/dashboard" className="tap-target text-brand-primary hover:text-brand-primary/80">
             ダッシュボード
           </Link>
-          <Link href="/nfc" className="tap-target text-brand-primary hover:text-brand-primary/80">
-            打刻ページ
-          </Link>
         </nav>
         {displayName ? <span className="text-sm font-medium text-brand-text">{displayName}</span> : null}
       </header>

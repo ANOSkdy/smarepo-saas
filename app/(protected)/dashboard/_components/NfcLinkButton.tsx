@@ -11,7 +11,7 @@ export default function NfcLinkButton() {
     <Link
       href={`/nfc?${qs}`}
       prefetch
-      aria-label="打刻ページ"
+      aria-label="打刻ページ（会社）"
       className="tap-target inline-flex items-center gap-2 rounded-xl border border-brand-border bg-brand-primary px-4 py-2 text-sm font-semibold text-brand-primaryText shadow-sm transition hover:bg-brand-primary/90"
     >
       <svg
@@ -27,7 +27,7 @@ export default function NfcLinkButton() {
         <path d="M5 8a7 7 0 0 1 14 0v8a7 7 0 0 1-14 0Z" />
         <path d="M12 6v12" />
       </svg>
-      打刻ページへ
+      打刻ページ（会社）
     </Link>
   );
 }

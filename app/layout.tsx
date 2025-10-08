@@ -25,9 +25,6 @@ export default function RootLayout({
               <Link href="/dashboard" className="tap-target text-brand-primary hover:text-brand-primary/80">
                 ダッシュボード
               </Link>
-              <Link href="/nfc" className="tap-target text-brand-primary hover:text-brand-primary/80">
-                打刻ページ
-              </Link>
             </nav>
           </div>
         </header>
