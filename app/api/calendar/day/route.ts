@@ -1,6 +1,69 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { buildDayDetail, getLogsBetween } from '@/lib/airtable/logs';
+import { buildDayDetail, getLogsBetween, type NormalizedLog } from '@/lib/airtable/logs';
+
+type MachineLogExtras = {
+  machineId?: string | null;
+  machineid?: string | null;
+  fields?: Record<string, unknown> | null;
+};
+
+function extractMachineId(log: NormalizedLog): string | undefined {
+  const extras = log as NormalizedLog & MachineLogExtras;
+  const direct = extras.machineId ?? extras.machineid;
+  if (typeof direct === 'string' && direct.trim().length > 0) {
+    return direct.trim();
+  }
+  const fromFields = (() => {
+    const { fields } = extras;
+    if (!fields || typeof fields !== 'object') {
+      return undefined;
+    }
+    const record = fields as Record<string, unknown>;
+    const raw = (record.machineId ?? record.machineid) as unknown;
+    return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : undefined;
+  })();
+  return fromFields;
+}
+
+function collectMachineAssignments(logs: NormalizedLog[]): (string | undefined)[] {
+  type OpenSessionState = { log: NormalizedLog; machineId?: string } | null;
+  const sorted = [...logs].sort((a, b) => a.timestampMs - b.timestampMs);
+  const openSessions = new Map<string, OpenSessionState>();
+  const machineQueue: (string | undefined)[] = [];
+
+  for (const log of sorted) {
+    const userKey = log.userId ?? log.userName ?? 'unknown-user';
+    const currentOpen = openSessions.get(userKey) ?? null;
+
+    if (log.type === 'IN') {
+      if (currentOpen) {
+        machineQueue.push(currentOpen.machineId);
+      }
+      openSessions.set(userKey, { log, machineId: extractMachineId(log) });
+      continue;
+    }
+
+    if (!currentOpen) {
+      continue;
+    }
+
+    if (log.timestampMs <= currentOpen.log.timestampMs) {
+      continue;
+    }
+
+    machineQueue.push(currentOpen.machineId);
+    openSessions.set(userKey, null);
+  }
+
+  for (const [, pending] of openSessions) {
+    if (pending) {
+      machineQueue.push(pending.machineId);
+    }
+  }
+
+  return machineQueue;
+}
 
 export const runtime = 'nodejs';
 
@@ -43,8 +106,13 @@ export async function GET(req: NextRequest) {
     }
 
     const logs = await getLogsBetween(range);
+    const machineAssignments = collectMachineAssignments(logs);
     const { sessions } = buildDayDetail(logs);
-    return NextResponse.json({ date, sessions });
+    const sessionsWithMachine = sessions.map((session, index) => ({
+      ...session,
+      machineId: machineAssignments[index],
+    }));
+    return NextResponse.json({ date, sessions: sessionsWithMachine });
   } catch (error) {
     console.error('[calendar][day] failed to fetch day detail', error);
     return errorResponse('INTERNAL_ERROR', 500);

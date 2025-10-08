@@ -9,6 +9,7 @@ type SessionRecord = {
   clockOutAt?: string | null;
   hours?: number | null;
   status: '正常' | '稼働中';
+  machineId?: string;
 };
 
 type SessionGroup = {
@@ -215,7 +216,7 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
           ) : detail ? (
             <div className="space-y-4">
               <section>
-                <h4 className="text-sm font-semibold text-brand-text">セッション概要</h4>
+                <h4 className="text-sm font-semibold text-brand-text">稼働状況</h4>
                 {sessionGroups.length === 0 ? (
                   <p className="mt-2 text-sm text-brand-muted">この日にペアリングされたセッションはありません。</p>
                 ) : (
@@ -226,7 +227,9 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
                         className="rounded-2xl border border-brand-border bg-brand-surface-alt p-4 shadow-sm sm:p-5"
                       >
                         <div className="flex items-center justify-between">
-                          <p className="text-[15px] font-semibold text-brand-text sm:text-base">{group.userName}</p>
+                          <p className="text-[15px] font-semibold text-brand-text text-black sm:text-base">
+                            {group.userName}
+                          </p>
                         </div>
                         <div className="mt-2 divide-y divide-brand-border/60">
                           {group.items.map((session, index) => {
@@ -247,6 +250,10 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
                                   </span>
                                   {typeof session.hours === 'number' ? <span>（{session.hours}時間）</span> : null}
                                   <span className={`text-xs sm:text-sm ${statusClass}`}>{session.status}</span>
+                                </div>
+                                <div className="mt-1 text-sm text-brand-text">
+                                  <span className="mr-2 opacity-70">機械</span>
+                                  <span className="tabular-nums">{session.machineId ?? '-'}</span>
                                 </div>
                               </div>
                             );
