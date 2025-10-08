@@ -93,7 +93,12 @@ export async function GET(req: NextRequest) {
     const { sessions } = buildDayDetail(logs);
 
     const logById = new Map(logs.map((log) => [log.id, log] as const));
-    const userLookupCandidates = ['userName', 'username', 'userName (from user)', 'name (from user)'] as const;
+    const userLookupCandidates = [
+      'name (from user)',
+      'userName (from user)',
+      'userName',
+      'username',
+    ] as const;
     const machineLookupCandidates = [
       'machineId',
       'machineid',
@@ -125,16 +130,16 @@ export async function GET(req: NextRequest) {
       const startLog = logById.get(session.startLogId);
       const endLog = session.endLogId ? logById.get(session.endLogId) : undefined;
 
+      // Logs テーブルの Lookup で解決できる名称のみを利用する
       const userName =
         readLookup(startLog?.rawFields, userLookupCandidates, normalizeLookupText) ??
         readLookup(endLog?.rawFields, userLookupCandidates, normalizeLookupText) ??
-        session.userName ??
-        '未登録ユーザー';
+        null;
 
       const machineId =
         readLookup(startLog?.rawFields, machineLookupCandidates, normalizeMachineId) ??
         readLookup(endLog?.rawFields, machineLookupCandidates, normalizeMachineId) ??
-        normalizeMachineId(session.machineId);
+        null;
 
       return {
         ...session,

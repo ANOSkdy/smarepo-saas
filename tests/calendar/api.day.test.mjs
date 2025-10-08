@@ -131,6 +131,10 @@ test('day API returns paired sessions without punches detail', async () => {
       workType: '溶接',
       note: null,
       machineId: '1001',
+      rawFields: {
+        'name (from user)': ['suzuki'],
+        'machineId (from machine)': ['1001'],
+      },
     },
     {
       id: 'log-2',
@@ -144,6 +148,10 @@ test('day API returns paired sessions without punches detail', async () => {
       workType: '溶接',
       note: '現地確認',
       machineId: '1001',
+      rawFields: {
+        'name (from user)': ['suzuki'],
+        'machineId (from machine)': ['1001'],
+      },
     },
     {
       id: 'log-3',
@@ -156,6 +164,10 @@ test('day API returns paired sessions without punches detail', async () => {
       siteName: '帯広東',
       workType: null,
       note: null,
+      rawFields: {
+        'userName (from user)': ['sato'],
+        'machineId (from machine)': ['2002'],
+      },
     },
     {
       id: 'log-4',
@@ -169,6 +181,10 @@ test('day API returns paired sessions without punches detail', async () => {
       workType: null,
       note: null,
       machineId: '2002',
+      rawFields: {
+        'userName (from user)': ['sato'],
+        'machineId (from machine)': ['2002'],
+      },
     },
     {
       id: 'log-5',
@@ -182,6 +198,10 @@ test('day API returns paired sessions without punches detail', async () => {
       workType: null,
       note: null,
       machineId: '2002',
+      rawFields: {
+        'userName (from user)': ['sato'],
+        'machineId (from machine)': ['2002'],
+      },
     },
     {
       id: 'log-6',
@@ -195,6 +215,10 @@ test('day API returns paired sessions without punches detail', async () => {
       workType: '溶接',
       note: null,
       machineId: '1001',
+      rawFields: {
+        'name (from user)': ['suzuki'],
+        'machineId (from machine)': ['1001'],
+      },
     },
   ];
   const getLogsMock = mock.fn(async () => baseLogs);
@@ -281,4 +305,72 @@ test('day API returns machineId from lookup field', async () => {
   assert.strictEqual(body.sessions.length, 1);
   assert.strictEqual(body.sessions[0].machineId, '3003');
   assert.strictEqual(body.sessions[0].userName, 'tanaka');
+});
+
+test('day API prioritises user name lookup order and falls back to null', async () => {
+  const authMock = mock.fn(async () => ({ user: { id: 'user-lookup' } }));
+  const logs = [
+    {
+      id: 'log-lookup-1',
+      type: 'IN',
+      timestamp: '2025-09-03T00:00:00.000Z',
+      timestampMs: Date.parse('2025-09-03T00:00:00.000Z'),
+      userId: 'user-lookup-1',
+      userName: 'legacy-primary',
+      siteId: null,
+      siteName: null,
+      workType: null,
+      note: null,
+      machineId: null,
+      rawFields: {
+        'username': ['legacy-lowest'],
+        'userName': ['legacy'],
+        'userName (from user)': ['secondary'],
+        'name (from user)': ['primary'],
+      },
+    },
+    {
+      id: 'log-lookup-2',
+      type: 'OUT',
+      timestamp: '2025-09-03T05:00:00.000Z',
+      timestampMs: Date.parse('2025-09-03T05:00:00.000Z'),
+      userId: 'user-lookup-1',
+      userName: 'legacy-primary',
+      siteId: null,
+      siteName: null,
+      workType: null,
+      note: null,
+      machineId: null,
+      rawFields: {
+        'username': ['legacy-lowest'],
+        'userName': ['legacy'],
+        'userName (from user)': ['secondary'],
+        'name (from user)': ['primary'],
+      },
+    },
+    {
+      id: 'log-lookup-3',
+      type: 'IN',
+      timestamp: '2025-09-03T01:00:00.000Z',
+      timestampMs: Date.parse('2025-09-03T01:00:00.000Z'),
+      userId: 'user-lookup-2',
+      userName: 'should-not-appear',
+      siteId: null,
+      siteName: null,
+      workType: null,
+      note: null,
+      machineId: null,
+      rawFields: {},
+    },
+  ];
+  const getLogsMock = mock.fn(async () => logs);
+  const { GET } = await importRouteWith({ auth: authMock, getLogs: getLogsMock });
+  const response = await GET(new Request('https://example.com/api/calendar/day?date=2025-09-03'));
+  assert.strictEqual(response.status, 200);
+  const body = await response.json();
+  assert.ok(Array.isArray(body.sessions));
+  assert.strictEqual(body.sessions.length, 2);
+  const [firstSession, secondSession] = body.sessions;
+  assert.strictEqual(firstSession.userName, 'primary');
+  assert.strictEqual(secondSession.userName, null);
 });
