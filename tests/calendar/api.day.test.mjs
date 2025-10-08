@@ -231,3 +231,45 @@ test('day API returns paired sessions without punches detail', async () => {
   assert.strictEqual(openSession.clockInAt, '21:00');
   assert.strictEqual(openSession.machineId, '1001');
 });
+
+test('day API resolves machineId from raw fields when absent on log root', async () => {
+  const authMock = mock.fn(async () => ({ user: { id: 'user-1' } }));
+  const inTimestamp = '2025-09-02T00:00:00.000Z';
+  const outTimestamp = '2025-09-02T06:00:00.000Z';
+  const logs = [
+    {
+      id: 'log-1',
+      type: 'IN',
+      timestamp: inTimestamp,
+      timestampMs: Date.parse(inTimestamp),
+      userId: 'user-3',
+      userName: 'tanaka',
+      siteId: null,
+      siteName: null,
+      workType: null,
+      note: null,
+      fields: { machineid: '3003' },
+    },
+    {
+      id: 'log-2',
+      type: 'OUT',
+      timestamp: outTimestamp,
+      timestampMs: Date.parse(outTimestamp),
+      userId: 'user-3',
+      userName: 'tanaka',
+      siteId: null,
+      siteName: null,
+      workType: null,
+      note: null,
+      fields: {},
+    },
+  ];
+  const getLogsMock = mock.fn(async () => logs);
+  const { GET } = await importRouteWith({ auth: authMock, getLogs: getLogsMock });
+  const response = await GET(new Request('https://example.com/api/calendar/day?date=2025-09-02'));
+  assert.strictEqual(response.status, 200);
+  const body = await response.json();
+  assert.ok(Array.isArray(body.sessions));
+  assert.strictEqual(body.sessions.length, 1);
+  assert.strictEqual(body.sessions[0].machineId, '3003');
+});
