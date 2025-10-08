@@ -253,7 +253,11 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
                                 </div>
                                 <div className="mt-1 text-sm text-brand-text">
                                   <span className="mr-2 opacity-70">機械</span>
-                                  <span className="tabular-nums">{session.machineId ?? '-'}</span>
+                                  <span className="tabular-nums">
+                                    {session.machineId && String(session.machineId).trim().length > 0
+                                      ? session.machineId
+                                      : '-'}
+                                  </span>
                                 </div>
                               </div>
                             );

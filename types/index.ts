@@ -64,3 +64,18 @@ export type StampRecord = {
   accuracy?: number;
   createdAt: string;
 };
+
+export type DaySession = {
+  userId: string;
+  username: string;
+  sitename: string;
+  workdescription?: string | null;
+  clockInAt?: string | null;
+  clockOutAt?: string | null;
+  hours?: number | null;
+  /**
+   * Machines.machineId を API 側で解決して付与。
+   * UI で「機械」欄にそのまま表示する。
+   */
+  machineId?: string | null;
+};
