@@ -1,10 +1,14 @@
 import type { ReactNode } from 'react';
 import { auth } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 type SessionUser = {
   name?: string | null;
   email?: string | null;
   userName?: string | null;
+  displayName?: string | null;
+  id?: string | null;
 };
 
 type SessionLike = {
@@ -17,18 +21,20 @@ export function resolveDashboardUserName(session: SessionLike): string | null {
     return null;
   }
 
-  if (typeof user.name === 'string' && user.name.trim()) {
-    return user.name;
-  }
+  const candidates: Array<string | null | undefined> = [
+    user.name,
+    user.userName,
+    user.displayName,
+    typeof user.email === 'string' ? user.email.split('@')[0] : undefined,
+    typeof user.id === 'string' && user.id ? `user-${user.id.slice(0, 8)}` : undefined,
+  ];
 
-  if (typeof user.userName === 'string' && user.userName.trim()) {
-    return user.userName;
-  }
-
-  if (typeof user.email === 'string') {
-    const [localPart] = user.email.split('@');
-    if (localPart && localPart.trim()) {
-      return localPart.trim();
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (trimmed) {
+        return trimmed;
+      }
     }
   }
 
@@ -37,15 +43,13 @@ export function resolveDashboardUserName(session: SessionLike): string | null {
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const session = await auth();
-  const name = resolveDashboardUserName(session);
+  const name = resolveDashboardUserName(session) ?? 'ログイン中';
 
   return (
     <>
-      {name ? (
-        <div className="mb-2 flex justify-end text-sm text-brand-muted" aria-label="ログインユーザー名">
-          {name}
-        </div>
-      ) : null}
+      <div className="mb-2 flex justify-end text-sm text-brand-muted" aria-label="ログインユーザー名">
+        {name}
+      </div>
       {children}
     </>
   );
