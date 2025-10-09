@@ -15,7 +15,7 @@ if (existsSync(outDir)) {
 }
 
 execSync(
-  'pnpm exec tsc components/HeaderNav.tsx app/(protected)/_components/SubHeaderGate.tsx --module nodenext --target es2020 --moduleResolution nodenext --esModuleInterop --jsx react-jsx --outDir tests/dist-nav',
+  'pnpm exec tsc components/HeaderNav.tsx app/(protected)/_components/SubHeaderGate.tsx app/(protected)/dashboard/layout.tsx --module nodenext --target es2020 --moduleResolution nodenext --esModuleInterop --jsx react-jsx --outDir tests/dist-nav',
   { cwd: projectRoot, stdio: 'inherit' },
 );
 
@@ -24,6 +24,9 @@ const { shouldHideDashboardLink, shouldHideNfcLink, resolveNfcHref } = await imp
 );
 const { shouldHideSubHeader } = await import(
   new URL('../dist-nav/app/(protected)/_components/SubHeaderGate.js', import.meta.url),
+);
+const { resolveDashboardUserName } = await import(
+  new URL('../dist-nav/app/(protected)/dashboard/layout.js', import.meta.url),
 );
 
 test('shouldHideNfcLink hides link on /nfc', () => {
@@ -61,4 +64,21 @@ test('shouldHideSubHeader hides for dashboard and nfc routes', () => {
 test('shouldHideSubHeader keeps subheader for other routes', () => {
   assert.equal(shouldHideSubHeader('/settings'), false);
   assert.equal(shouldHideSubHeader(undefined), false);
+});
+
+test('resolveDashboardUserName prefers explicit name', () => {
+  assert.equal(resolveDashboardUserName({ user: { name: '角谷 亮太', email: 'rkadoya@example.com' } }), '角谷 亮太');
+});
+
+test('resolveDashboardUserName falls back to userName', () => {
+  assert.equal(resolveDashboardUserName({ user: { name: '', userName: 'rkadoya' } }), 'rkadoya');
+});
+
+test('resolveDashboardUserName derives from email when necessary', () => {
+  assert.equal(resolveDashboardUserName({ user: { email: 'rkadoya@example.com' } }), 'rkadoya');
+});
+
+test('resolveDashboardUserName returns null when unavailable', () => {
+  assert.equal(resolveDashboardUserName({ user: { email: '' } }), null);
+  assert.equal(resolveDashboardUserName(null), null);
 });
