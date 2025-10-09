@@ -15,8 +15,11 @@ test('skip link points to main landmark', () => {
 
 test('protected layout exposes navigation landmark', () => {
   const protectedLayout = read('../app/(protected)/layout.tsx');
-  assert.match(protectedLayout, /role="navigation"/);
-  assert.match(protectedLayout, /aria-label="保護エリア内ナビゲーション"/);
+  assert.match(protectedLayout, /<HeaderNav \/>/);
+
+  const headerNav = read('../components/HeaderNav.tsx');
+  assert.match(headerNav, /role="navigation"/);
+  assert.match(headerNav, /aria-label="保護エリア内ナビゲーション"/);
 });
 
 test('logout flows return to the unified login UI', () => {

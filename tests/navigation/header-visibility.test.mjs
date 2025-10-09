@@ -19,7 +19,9 @@ execSync(
   { cwd: projectRoot, stdio: 'inherit' },
 );
 
-const { shouldHideNfcLink } = await import(new URL('../dist-nav/components/HeaderNav.js', import.meta.url));
+const { shouldHideDashboardLink, shouldHideNfcLink, resolveNfcHref } = await import(
+  new URL('../dist-nav/components/HeaderNav.js', import.meta.url),
+);
 const { shouldHideSubHeader } = await import(
   new URL('../dist-nav/app/(protected)/_components/SubHeaderGate.js', import.meta.url),
 );
@@ -33,6 +35,20 @@ test('shouldHideNfcLink keeps link on other paths', () => {
   assert.equal(shouldHideNfcLink('/dashboard'), false);
   assert.equal(shouldHideNfcLink('/'), false);
   assert.equal(shouldHideNfcLink(null), false);
+});
+
+test('shouldHideDashboardLink hides link on dashboard routes', () => {
+  assert.equal(shouldHideDashboardLink('/dashboard'), true);
+  assert.equal(shouldHideDashboardLink('/dashboard/reports'), true);
+  assert.equal(shouldHideDashboardLink('/settings'), false);
+  assert.equal(shouldHideDashboardLink(undefined), false);
+});
+
+test('resolveNfcHref appends machine id when on dashboard', () => {
+  assert.equal(resolveNfcHref('/dashboard'), '/nfc?machineid=1001');
+  assert.equal(resolveNfcHref('/dashboard/summary'), '/nfc?machineid=1001');
+  assert.equal(resolveNfcHref('/settings'), '/nfc');
+  assert.equal(resolveNfcHref(undefined), '/nfc');
 });
 
 test('shouldHideSubHeader hides for dashboard and nfc routes', () => {
