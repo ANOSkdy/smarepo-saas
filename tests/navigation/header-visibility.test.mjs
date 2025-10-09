@@ -19,7 +19,11 @@ execSync(
   { cwd: projectRoot, stdio: 'inherit' },
 );
 
-const { shouldHideNfcLink } = await import(new URL('../dist-nav/components/HeaderNav.js', import.meta.url));
+const {
+  shouldHideNfcLink,
+  shouldHideDashboardLink,
+  resolveDisplayName,
+} = await import(new URL('../dist-nav/components/HeaderNav.js', import.meta.url));
 const { shouldHideSubHeader } = await import(
   new URL('../dist-nav/app/(protected)/_components/SubHeaderGate.js', import.meta.url),
 );
@@ -33,6 +37,29 @@ test('shouldHideNfcLink keeps link on other paths', () => {
   assert.equal(shouldHideNfcLink('/dashboard'), false);
   assert.equal(shouldHideNfcLink('/'), false);
   assert.equal(shouldHideNfcLink(null), false);
+});
+
+test('shouldHideDashboardLink hides link on /dashboard routes', () => {
+  assert.equal(shouldHideDashboardLink('/dashboard'), true);
+  assert.equal(shouldHideDashboardLink('/dashboard/reports'), true);
+});
+
+test('shouldHideDashboardLink keeps link on other paths', () => {
+  assert.equal(shouldHideDashboardLink('/nfc'), false);
+  assert.equal(shouldHideDashboardLink(undefined), false);
+});
+
+test('resolveDisplayName falls back to userName and email local part', () => {
+  assert.equal(
+    resolveDisplayName({ name: null, email: 'user@example.com', userName: 'テストユーザー' }),
+    'テストユーザー',
+  );
+  assert.equal(resolveDisplayName({ name: null, email: 'user@example.com' }), 'user');
+});
+
+test('resolveDisplayName returns null when no identifiers provided', () => {
+  assert.equal(resolveDisplayName(undefined), null);
+  assert.equal(resolveDisplayName({ name: null, email: null }), null);
 });
 
 test('shouldHideSubHeader hides for dashboard and nfc routes', () => {
