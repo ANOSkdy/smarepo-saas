@@ -4,10 +4,6 @@ import { getLogsBetween, summariseMonth } from '@/lib/airtable/logs';
 
 export const runtime = 'nodejs';
 
-function errorResponse(code: string, status: number) {
-  return NextResponse.json({ error: code }, { status });
-}
-
 function resolveMonthRange(year: number, month: number) {
   const startUtc = new Date(Date.UTC(year, month - 1, 1, -9, 0, 0));
   const nextMonth = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
@@ -18,29 +14,28 @@ function resolveMonthRange(year: number, month: number) {
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
-    return errorResponse('UNAUTHORIZED', 401);
+    return NextResponse.json({ message: 'unauthorized' }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const yearValue = searchParams.get('year');
+  const monthValue = searchParams.get('month');
+  const year = yearValue ? Number.parseInt(yearValue, 10) : NaN;
+  const month = monthValue ? Number.parseInt(monthValue, 10) : NaN;
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || year === 0 || month === 0) {
+    const normalizedYear = !Number.isFinite(year) || year === 0 ? null : year;
+    const normalizedMonth = !Number.isFinite(month) || month === 0 ? null : month;
+    return NextResponse.json({ year: normalizedYear, month: normalizedMonth, days: [] });
   }
 
   try {
-    const { searchParams } = new URL(req.url);
-    const yearValue = searchParams.get('year');
-    const monthValue = searchParams.get('month');
-    const year = yearValue ? Number.parseInt(yearValue, 10) : NaN;
-    const month = monthValue ? Number.parseInt(monthValue, 10) : NaN;
-
-    if (!Number.isFinite(year) || !Number.isFinite(month)) {
-      return errorResponse('MISSING_PARAMS', 400);
-    }
-    if (month < 1 || month > 12) {
-      return errorResponse('INVALID_MONTH', 400);
-    }
-
     const range = resolveMonthRange(year, month);
     const logs = await getLogsBetween(range);
     const days = summariseMonth(logs);
-    return NextResponse.json({ year, month, days });
+    return NextResponse.json({ year, month, days: days ?? [] });
   } catch (error) {
-    console.error('[calendar][month] failed to fetch calendar summary', error);
-    return errorResponse('INTERNAL_ERROR', 500);
+    console.error('[calendar][month] error', error);
+    return NextResponse.json({ year: null, month: null, days: [] });
   }
 }

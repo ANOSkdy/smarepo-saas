@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import NextAuthSessionProvider from '@/components/SessionProvider'; // Import
+import NextAuthSessionProvider from '@/components/SessionProvider';
+import SkipLink from '@/components/SkipLink';
+import HeaderNav from '@/components/HeaderNav';
 
 export const metadata: Metadata = {
   title: 'AI日報「スマレポ」',
@@ -14,13 +16,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
-      <body className="bg-base grid place-items-center min-h-screen">
-        <header className="w-full bg-white shadow-md">
-          <div className="mx-auto max-w-4xl px-4 py-3">
-            <h1 className="text-xl font-bold text-gray-800">スマレポ</h1>
+      <body className="min-h-screen bg-brand-surface text-brand-text">
+        <SkipLink />
+        <header className="border-b border-brand-border bg-brand-surface-alt">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
+            <p className="text-lg font-semibold">スマレポ</p>
+            <HeaderNav />
           </div>
         </header>
-        <NextAuthSessionProvider>{children}</NextAuthSessionProvider>
+        <NextAuthSessionProvider>
+          <main id="main" role="main" className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 pb-12 pt-6 sm:px-6">
+            {children}
+          </main>
+        </NextAuthSessionProvider>
       </body>
     </html>
   );
