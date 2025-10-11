@@ -82,7 +82,7 @@ export default async function ReportsPage() {
         <p className="text-sm font-medium text-primary">帳票出力</p>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">稼働セッション集計</h1>
         <p className="text-sm text-muted-foreground">
-          月次の稼働実績を検索し、CSVでダウンロードできます。
+          月次の稼働実績を検索し、CSVやPDFの帳票としてダウンロードできます。
         </p>
       </header>
       <ReportsContent initialRecords={initialRecords} initialFilter={initialFilter} />

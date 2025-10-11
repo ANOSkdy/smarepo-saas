@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Filters, FiltersValue } from './Filters';
 import { DownloadCsvButton } from './DownloadCsvButton';
+import { DownloadPdfButton } from './DownloadPdfButton';
 
 export type ReportRecord = {
   id: string;
@@ -105,6 +106,7 @@ export function ReportsContent({ initialRecords, initialFilter }: ReportsContent
   const [records, setRecords] = useState<ReportRecord[]>(initialRecords);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pdfType, setPdfType] = useState<'personal' | 'site' | 'monthly'>('personal');
 
   useEffect(() => {
     setRecords(initialRecords);
@@ -152,7 +154,36 @@ export function ReportsContent({ initialRecords, initialFilter }: ReportsContent
         </div>
       ) : null}
       <ResultsTable records={records} isLoading={isLoading} />
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <label htmlFor="pdf-template" className="flex flex-col text-right">
+            <span className="text-xs font-medium text-muted-foreground">PDFテンプレート</span>
+            <select
+              id="pdf-template"
+              className="mt-1 rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={pdfType}
+              onChange={(event) => setPdfType(event.target.value as 'personal' | 'site' | 'monthly')}
+              disabled={isLoading}
+              aria-label="PDFテンプレートを選択"
+            >
+              <option value="personal">個人別リスト</option>
+              <option value="site">現場別リスト</option>
+              <option value="monthly">月次マトリクス</option>
+            </select>
+          </label>
+          <DownloadPdfButton
+            type={pdfType}
+            params={{
+              year: filters.year,
+              month: filters.month,
+              siteId: filters.siteId || undefined,
+              userId: filters.userId || undefined,
+              machineId: filters.machineId || undefined,
+            }}
+            disabled={isLoading}
+            hasRecords={records.length > 0}
+          />
+        </div>
         <DownloadCsvButton filters={filters} disabled={isLoading} />
       </div>
     </section>
