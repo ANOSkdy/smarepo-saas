@@ -11,10 +11,13 @@
     "diag:p1": "tsx scripts/p1-diagnostics.ts"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^133.0.0",
     "airtable": "^0.12.2",
     "bcryptjs": "^3.0.2",
+    "dayjs": "^1.11.13",
     "next": "15.5.2",
     "next-auth": "5.0.0-beta.29",
+    "puppeteer-core": "^23.7.3",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
