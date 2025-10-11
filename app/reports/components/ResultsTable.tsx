@@ -55,13 +55,10 @@ export function ResultsTable({ records, isLoading }: ResultsTableProps) {
         <thead className="bg-muted/50">
           <tr>
             <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              日付
+              現場
             </th>
             <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               作業員
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              現場
             </th>
             <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               機械
@@ -72,28 +69,32 @@ export function ResultsTable({ records, isLoading }: ResultsTableProps) {
             <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               時間
             </th>
+            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              日付
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border bg-background">
           {records.map((record) => (
             <tr key={record.id} className="hover:bg-muted/40">
-              <td className="px-4 py-3 text-sm text-foreground">{record.date}</td>
-              <td className="px-4 py-3 text-sm text-foreground">{record.username}</td>
               <td className="px-4 py-3 text-sm text-foreground">{record.sitename}</td>
+              <td className="px-4 py-3 text-sm text-foreground">{record.username}</td>
               <td className="px-4 py-3 text-sm text-foreground">{record.machinename}</td>
               <td className="px-4 py-3 text-sm text-foreground">{record.workdescription}</td>
               <td className="px-4 py-3 text-right text-sm text-foreground">{record.hours.toFixed(2)}</td>
+              <td className="px-4 py-3 text-sm text-foreground">{record.date}</td>
             </tr>
           ))}
         </tbody>
         <tfoot className="bg-muted/50">
           <tr>
-            <td className="px-4 py-3 text-sm font-semibold text-foreground" colSpan={5}>
+            <td className="px-4 py-3 text-sm font-semibold text-foreground" colSpan={4}>
               合計
             </td>
             <td className="px-4 py-3 text-right text-sm font-semibold text-foreground">
               {totalHours.toFixed(2)}
             </td>
+            <td className="px-4 py-3 text-sm text-foreground" aria-hidden="true"></td>
           </tr>
         </tfoot>
       </table>
@@ -121,9 +122,9 @@ export function ReportsContent({ initialRecords, initialFilter }: ReportsContent
         year: String(filters.year),
         month: String(filters.month),
       });
-      if (filters.siteId) params.set('siteId', filters.siteId);
-      if (filters.userId) params.set('userId', filters.userId);
-      if (filters.machineId) params.set('machineId', filters.machineId);
+      if (filters.sitename) params.set('sitename', filters.sitename);
+      if (filters.username) params.set('username', filters.username);
+      if (filters.machinename) params.set('machinename', filters.machinename);
 
       const response = await fetch(`/api/report-index/search?${params.toString()}`, {
         method: 'GET',
@@ -176,15 +177,15 @@ export function ReportsContent({ initialRecords, initialFilter }: ReportsContent
             params={{
               year: filters.year,
               month: filters.month,
-              siteId: filters.siteId || undefined,
-              userId: filters.userId || undefined,
-              machineId: filters.machineId || undefined,
+              sitename: filters.sitename || undefined,
+              username: filters.username || undefined,
+              machinename: filters.machinename || undefined,
             }}
             disabled={isLoading}
             hasRecords={records.length > 0}
           />
+          <DownloadCsvButton filters={filters} disabled={isLoading} />
         </div>
-        <DownloadCsvButton filters={filters} disabled={isLoading} />
       </div>
     </section>
   );

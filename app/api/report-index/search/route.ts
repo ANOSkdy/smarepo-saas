@@ -1,14 +1,14 @@
 import { NextRequest } from 'next/server';
-import { buildAndFormula, listRecords } from '../../../../src/lib/airtable/client';
+import { listRecords } from '../../../../src/lib/airtable/client';
 
 export const runtime = 'nodejs';
 
 type SearchParams = {
   year: number;
   month: number;
-  siteId?: string;
-  userId?: string;
-  machineId?: string;
+  sitename?: string;
+  username?: string;
+  machinename?: string;
 };
 
 type ReportIndexRecord = {
@@ -37,6 +37,11 @@ function parseNumber(value: string | null, name: string): number {
   return parsed;
 }
 
+function normalizeText(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
 function parseSearchParams(request: NextRequest): SearchParams {
   const url = request.nextUrl;
   const year = parseNumber(url.searchParams.get('year'), 'year');
@@ -44,33 +49,36 @@ function parseSearchParams(request: NextRequest): SearchParams {
   if (month < 1 || month > 12) {
     throw new Error('month must be between 1 and 12');
   }
-  const siteId = url.searchParams.get('siteId')?.trim();
-  const userId = url.searchParams.get('userId')?.trim();
-  const machineId = url.searchParams.get('machineId')?.trim();
   return {
     year,
     month,
-    siteId: siteId ? siteId : undefined,
-    userId: userId ? userId : undefined,
-    machineId: machineId ? machineId : undefined,
+    sitename: normalizeText(url.searchParams.get('sitename')),
+    username: normalizeText(url.searchParams.get('username')),
+    machinename: normalizeText(url.searchParams.get('machinename')),
   };
 }
 
+function escapeFormulaText(value: string): string {
+  return value.replace(/'/g, "\\'");
+}
+
 function buildFilterFormula(params: SearchParams): string {
-  const baseConditions: Record<string, string | number> = {
-    year: params.year,
-    month: params.month,
-  };
-  if (params.siteId) {
-    baseConditions.siteId = params.siteId;
+  const clauses: string[] = [`({year}=${params.year})`, `({month}=${params.month})`];
+  const toSearchClause = (field: 'sitename' | 'username' | 'machinename', value: string) =>
+    `SEARCH(LOWER('${escapeFormulaText(value)}'), LOWER({${field}}&''))`;
+  if (params.sitename) {
+    clauses.push(toSearchClause('sitename', params.sitename));
   }
-  if (params.userId) {
-    baseConditions.userId = params.userId;
+  if (params.username) {
+    clauses.push(toSearchClause('username', params.username));
   }
-  if (params.machineId) {
-    baseConditions.machineId = params.machineId;
+  if (params.machinename) {
+    clauses.push(toSearchClause('machinename', params.machinename));
   }
-  return buildAndFormula(baseConditions);
+  if (clauses.length === 1) {
+    return clauses[0];
+  }
+  return `AND(${clauses.join(',')})`;
 }
 
 export async function GET(request: NextRequest): Promise<Response> {
@@ -101,6 +109,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       sort: [
         { field: 'sitename', direction: 'asc' },
         { field: 'username', direction: 'asc' },
+        { field: 'machinename', direction: 'asc' },
         { field: 'date', direction: 'asc' },
       ],
     });
@@ -126,3 +135,5 @@ export async function GET(request: NextRequest): Promise<Response> {
     return Response.json({ ok: false, message }, { status: 500 });
   }
 }
+
+export { buildFilterFormula };

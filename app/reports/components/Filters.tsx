@@ -1,13 +1,13 @@
 'use client';
 
-import { FormEvent } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 
 export type FiltersValue = {
   year: number;
   month: number;
-  siteId?: string;
-  userId?: string;
-  machineId?: string;
+  sitename?: string;
+  username?: string;
+  machinename?: string;
 };
 
 type FiltersProps = {
@@ -22,6 +22,42 @@ function formatMonth({ year, month }: { year: number; month: number }): string {
 }
 
 export function Filters({ value, onChange, onSearch, disabled }: FiltersProps) {
+  const [options, setOptions] = useState({
+    siteNames: [] as string[],
+    userNames: [] as string[],
+    machineNames: [] as string[],
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    fetch(`/api/report-index/options?year=${value.year}&month=${value.month}`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (!active || !data?.ok) {
+          return;
+        }
+        setOptions({
+          siteNames: Array.isArray(data.siteNames) ? data.siteNames : [],
+          userNames: Array.isArray(data.userNames) ? data.userNames : [],
+          machineNames: Array.isArray(data.machineNames) ? data.machineNames : [],
+        });
+      })
+      .catch(() => {
+        if (active) {
+          setOptions({ siteNames: [], userNames: [], machineNames: [] });
+        }
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [value.year, value.month]);
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onSearch();
@@ -53,46 +89,64 @@ export function Filters({ value, onChange, onSearch, disabled }: FiltersProps) {
         />
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium text-muted-foreground" htmlFor="siteId">
-          現場ID
+        <label className="text-sm font-medium text-muted-foreground" htmlFor="sitename">
+          現場名
         </label>
         <input
-          id="siteId"
+          id="sitename"
           type="text"
-          value={value.siteId ?? ''}
-          onChange={(event) => onChange({ ...value, siteId: event.target.value || undefined })}
+          list="report-site-names"
+          value={value.sitename ?? ''}
+          onChange={(event) => onChange({ ...value, sitename: event.target.value || undefined })}
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="S001"
+          placeholder="例：○○造成工事"
           disabled={disabled}
         />
+        <datalist id="report-site-names">
+          {options.siteNames.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium text-muted-foreground" htmlFor="userId">
-          作業員ID
+        <label className="text-sm font-medium text-muted-foreground" htmlFor="username">
+          作業員名
         </label>
         <input
-          id="userId"
+          id="username"
           type="text"
-          value={value.userId ?? ''}
-          onChange={(event) => onChange({ ...value, userId: event.target.value || undefined })}
+          list="report-user-names"
+          value={value.username ?? ''}
+          onChange={(event) => onChange({ ...value, username: event.target.value || undefined })}
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="U001"
+          placeholder="例：山田太郎"
           disabled={disabled}
         />
+        <datalist id="report-user-names">
+          {options.userNames.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium text-muted-foreground" htmlFor="machineId">
-          機械ID
+        <label className="text-sm font-medium text-muted-foreground" htmlFor="machinename">
+          機械名
         </label>
         <input
-          id="machineId"
+          id="machinename"
           type="text"
-          value={value.machineId ?? ''}
-          onChange={(event) => onChange({ ...value, machineId: event.target.value || undefined })}
+          list="report-machine-names"
+          value={value.machinename ?? ''}
+          onChange={(event) => onChange({ ...value, machinename: event.target.value || undefined })}
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="M001"
+          placeholder="例：バックホー"
           disabled={disabled}
         />
+        <datalist id="report-machine-names">
+          {options.machineNames.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
       </div>
       <div className="flex flex-col justify-end">
         <button

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import StampCard from '@/components/StampCard';
@@ -20,8 +21,13 @@ export default async function NFCPage({ searchParams }: NFCPageProps) {
   const machineIdParam = searchParams.machineid;
   if (typeof machineIdParam !== 'string') {
     return (
-      <div role="alert" className="rounded-lg border border-brand-border bg-brand-surface-alt p-4 text-brand-text">
-        無効な機械IDです。
+      <div className="space-y-3">
+        <Link href="/reports" className="text-sm font-semibold text-primary underline-offset-4 hover:underline">
+          稼働集計
+        </Link>
+        <div role="alert" className="rounded-lg border border-brand-border bg-brand-surface-alt p-4 text-brand-text">
+          無効な機械IDです。
+        </div>
       </div>
     );
   }
@@ -37,20 +43,32 @@ export default async function NFCPage({ searchParams }: NFCPageProps) {
     const machineName = machineIdParam.trim().length > 0 ? machineIdParam.trim() : '未登録';
 
     return (
-      <section className="flex flex-1 items-center justify-center">
-        <StampCard
-          initialStampType={initialStampType}
-          initialWorkDescription={initialWorkDescription}
-          userName={session.user.name ?? 'ゲスト'}
-          machineName={machineName}
-        />
+      <section className="flex flex-1 flex-col gap-4">
+        <div>
+          <Link href="/reports" className="text-sm font-semibold text-primary underline-offset-4 hover:underline">
+            稼働集計
+          </Link>
+        </div>
+        <div className="flex flex-1 items-center justify-center">
+          <StampCard
+            initialStampType={initialStampType}
+            initialWorkDescription={initialWorkDescription}
+            userName={session.user.name ?? 'ゲスト'}
+            machineName={machineName}
+          />
+        </div>
       </section>
     );
   } catch (error) {
     console.error('Failed to fetch initial data:', error);
     return (
-      <div role="alert" className="rounded-lg border border-brand-border bg-brand-surface-alt p-4 text-brand-text">
-        エラーが発生しました。時間をおいて再度お試しください。
+      <div className="space-y-3">
+        <Link href="/reports" className="text-sm font-semibold text-primary underline-offset-4 hover:underline">
+          稼働集計
+        </Link>
+        <div role="alert" className="rounded-lg border border-brand-border bg-brand-surface-alt p-4 text-brand-text">
+          エラーが発生しました。時間をおいて再度お試しください。
+        </div>
       </div>
     );
   }

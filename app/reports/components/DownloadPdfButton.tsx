@@ -7,9 +7,9 @@ type DownloadPdfButtonProps = {
   params: {
     year: number;
     month: number;
-    siteId?: string;
-    userId?: string;
-    machineId?: string;
+    sitename?: string;
+    username?: string;
+    machinename?: string;
   };
   disabled?: boolean;
   hasRecords?: boolean;
