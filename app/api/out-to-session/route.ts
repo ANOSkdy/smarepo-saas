@@ -1,124 +1,196 @@
-import Airtable, { FieldSet } from 'airtable';
+import { NextRequest } from 'next/server';
+import { upsertByCompositeKey } from '../../../src/lib/airtable/upsert';
 
 export const runtime = 'nodejs';
 
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
-  process.env.AIRTABLE_BASE_ID || ''
-);
-const LOGS_TABLE = process.env.AIRTABLE_TABLE_LOGS || 'Logs';
-const SESSIONS_TABLE = process.env.AIRTABLE_TABLE_SESSIONS || 'Session';
+const SESSIONS_TABLE = process.env.AIRTABLE_TABLE_SESSIONS || 'Sessions';
+const REPORT_INDEX_TABLE = process.env.AIRTABLE_TABLE_REPORT_INDEX || 'ReportIndex';
 
-interface LogFields extends FieldSet {
-  timestamp: string;
-  user: string;
-  username: string;
-  siteName: string;
-  workDescription: string;
-  type: 'IN' | 'OUT';
+const JST_OFFSET_MINUTES = 9 * 60;
+
+interface OutToSessionRequest {
+  userId: string;
+  siteId: string;
+  machineId: string;
+  workdescription: string;
+  clockInAt: string;
+  clockOutAt: string;
+  username?: string;
+  sitename?: string;
+  machinename?: string;
 }
 
-interface SessionFields extends FieldSet {
+interface UpsertFields extends Record<string, string | number | boolean> {
+  date: string;
   year: number;
   month: number;
   day: number;
+  weekday: string;
   userId: string;
   username: string;
+  siteId: string;
   sitename: string;
+  machineId: string;
+  machinename: string;
   workdescription: string;
   clockInAt: string;
   clockOutAt: string;
   hours: number;
+  isComplete: boolean;
 }
 
-async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 500): Promise<T> {
-  try {
-    return await fn();
-  } catch (error) {
-    if (retries === 0) throw error;
-    await new Promise((r) => setTimeout(r, delay));
-    return withRetry(fn, retries - 1, delay * 2);
+function parseRequestBody(body: unknown): OutToSessionRequest {
+  if (typeof body !== 'object' || body === null) {
+    throw new Error('invalid payload');
   }
-}
+  const {
+    userId,
+    siteId,
+    machineId,
+    workdescription,
+    clockInAt,
+    clockOutAt,
+    username,
+    sitename,
+    machinename,
+  } = body as Record<string, unknown>;
 
-function jstParts(date: Date): { year: number; month: number; day: number } {
-  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  const requiredStrings: [unknown, string][] = [
+    [userId, 'userId'],
+    [siteId, 'siteId'],
+    [machineId, 'machineId'],
+    [workdescription, 'workdescription'],
+    [clockInAt, 'clockInAt'],
+    [clockOutAt, 'clockOutAt'],
+  ];
+
+  requiredStrings.forEach(([value, field]) => {
+    if (typeof value !== 'string' || value.trim() === '') {
+      throw new Error(`${field} is required`);
+    }
+  });
+
+  const optionalString = (value: unknown): string | undefined => {
+    if (typeof value === 'undefined') return undefined;
+    return typeof value === 'string' ? value : undefined;
+  };
+
   return {
-    year: jst.getUTCFullYear(),
-    month: jst.getUTCMonth() + 1,
-    day: jst.getUTCDate(),
+    userId: String(userId),
+    siteId: String(siteId),
+    machineId: String(machineId),
+    workdescription: String(workdescription),
+    clockInAt: String(clockInAt),
+    clockOutAt: String(clockOutAt),
+    username: optionalString(username),
+    sitename: optionalString(sitename),
+    machinename: optionalString(machinename),
   };
 }
 
-export async function POST(req: Request): Promise<Response> {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return Response.json({ ok: false, error: 'invalid JSON' }, { status: 400 });
+function getJstDateParts(date: Date): {
+  year: number;
+  month: number;
+  day: number;
+  dateString: string;
+  weekday: string;
+} {
+  const utcMillis = date.getTime() + JST_OFFSET_MINUTES * 60 * 1000;
+  const jst = new Date(utcMillis);
+  const year = jst.getUTCFullYear();
+  const month = jst.getUTCMonth() + 1;
+  const day = jst.getUTCDate();
+  const dateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    timeZone: 'Asia/Tokyo',
+  }).format(date);
+  return { year, month, day, dateString, weekday };
+}
+
+function validateTimeRange(clockInAt: string, clockOutAt: string): {
+  clockIn: Date;
+  hours: number;
+} {
+  const clockIn = new Date(clockInAt);
+  const clockOut = new Date(clockOutAt);
+  if (Number.isNaN(clockIn.getTime()) || Number.isNaN(clockOut.getTime())) {
+    throw new Error('invalid datetime');
   }
-  const outLogId = (body as { outLogId?: unknown }).outLogId;
-  if (typeof outLogId !== 'string') {
-    return Response.json({ ok: false, error: 'outLogId required' }, { status: 400 });
+  const diffMs = clockOut.getTime() - clockIn.getTime();
+  if (diffMs <= 0) {
+    throw new Error('clockOutAt must be after clockInAt');
   }
+  const hours = Number((diffMs / 3_600_000).toFixed(2));
+  if (hours <= 0) {
+    throw new Error('duration must be positive');
+  }
+  return { clockIn, hours };
+}
 
+export async function POST(request: NextRequest): Promise<Response> {
+  let payload: OutToSessionRequest;
   try {
-    const outLog = await withRetry(() => base<LogFields>(LOGS_TABLE).find(outLogId));
-    if (outLog.fields.type !== 'OUT') {
-      return Response.json({ ok: false, error: 'log is not OUT' }, { status: 400 });
-    }
-    const outTs = new Date(outLog.fields.timestamp);
-    const { user, username, siteName, workDescription } = outLog.fields;
-
-    const candidates = await withRetry(() =>
-      base<LogFields>(LOGS_TABLE)
-        .select({
-          filterByFormula: `AND({type}='IN',{user}='${user}',{siteName}='${siteName}',{workDescription}='${workDescription}')`,
-          sort: [{ field: 'timestamp', direction: 'desc' }],
-          maxRecords: 50,
-        })
-        .all()
-    );
-
-    const inRecord = candidates.find((r) => new Date(r.fields.timestamp) < outTs);
-    if (!inRecord) {
-      return Response.json({ ok: true, skipped: true, reason: 'no IN match' });
-    }
-    const inTs = new Date(inRecord.fields.timestamp);
-    const { year, month, day } = jstParts(inTs);
-    const hours = Math.max((outTs.getTime() - inTs.getTime()) / 3600000, 0);
-    const roundedHours = Math.round(hours * 100) / 100;
-
-    const session: SessionFields = {
-      year,
-      month,
-      day,
-      userId: String(user),
-      username: String(username),
-      sitename: String(siteName),
-      workdescription: String(workDescription),
-      clockInAt: inRecord.fields.timestamp,
-      clockOutAt: outLog.fields.timestamp,
-      hours: roundedHours,
-    };
-
-    const exists = await withRetry(() =>
-      base<SessionFields>(SESSIONS_TABLE)
-        .select({
-          filterByFormula: `AND({userId}='${session.userId}',{sitename}='${session.sitename}',{workdescription}='${session.workdescription}',{clockInAt}='${session.clockInAt}',{clockOutAt}='${session.clockOutAt}')`,
-          maxRecords: 1,
-        })
-        .all()
-    );
-    if (exists.length > 0) {
-      return Response.json({ ok: true, skipped: true, reason: 'duplicate' });
-    }
-
-    const created = await withRetry(() =>
-      base<SessionFields>(SESSIONS_TABLE).create(session)
-    );
-    return Response.json({ ok: true, createdId: created.id, fields: created.fields });
+    const json = await request.json();
+    payload = parseRequestBody(json);
   } catch (error) {
-    console.error(error);
-    return Response.json({ ok: false, error: 'internal error' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'invalid request';
+    return Response.json({ ok: false, message }, { status: 400 });
+  }
+
+  let timing;
+  try {
+    timing = validateTimeRange(payload.clockInAt, payload.clockOutAt);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'invalid time range';
+    return Response.json({ ok: false, message }, { status: 400 });
+  }
+
+  const { clockIn, hours } = timing;
+
+  const { year, month, day, dateString, weekday } = getJstDateParts(clockIn);
+
+  const key = {
+    userId: payload.userId,
+    siteId: payload.siteId,
+    machineId: payload.machineId,
+    date: dateString,
+    workdescription: payload.workdescription,
+  };
+
+  const baseFields: UpsertFields = {
+    date: dateString,
+    year,
+    month,
+    day,
+    weekday,
+    userId: payload.userId,
+    username: payload.username ?? '',
+    siteId: payload.siteId,
+    sitename: payload.sitename ?? '',
+    machineId: payload.machineId,
+    machinename: payload.machinename ?? '',
+    workdescription: payload.workdescription,
+    clockInAt: payload.clockInAt,
+    clockOutAt: payload.clockOutAt,
+    hours,
+    isComplete: true,
+  };
+
+  try {
+    await upsertByCompositeKey<UpsertFields>({
+      table: SESSIONS_TABLE,
+      key,
+      payload: baseFields,
+    });
+    await upsertByCompositeKey<UpsertFields>({
+      table: REPORT_INDEX_TABLE,
+      key,
+      payload: baseFields,
+    });
+    return Response.json({ ok: true, hours, key });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'internal error';
+    return Response.json({ ok: false, message }, { status: 500 });
   }
 }

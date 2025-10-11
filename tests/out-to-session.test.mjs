@@ -14,3 +14,10 @@ test('out-to-session route declares node runtime', async () => {
     throw new Error('runtime not declared');
   }
 });
+
+test('out-to-session route uses composite upsert', async () => {
+  const content = await readFile(routePath, 'utf8');
+  if (!content.includes('upsertByCompositeKey')) {
+    throw new Error('upsertByCompositeKey not used');
+  }
+});
