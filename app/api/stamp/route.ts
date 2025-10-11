@@ -104,7 +104,29 @@ export async function POST(req: NextRequest) {
       fields.timestamp = timestamp;
     }
 
-    await logsTable.create([{ fields }], { typecast: true });
+    const createdRecords = await logsTable.create([{ fields }], { typecast: true });
+    const created = createdRecords[0];
+
+    if (created) {
+      const baseUrl = req.nextUrl.origin;
+      const outLogId = created.id;
+      try {
+        const response = await fetch(`${baseUrl}/api/out-to-session/from-logs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ outLogId }),
+          cache: 'no-store',
+        });
+        if (!response.ok) {
+          console.warn('[stamp] auto session conversion failed', {
+            outLogId,
+            status: response.status,
+          });
+        }
+      } catch (error) {
+        console.warn('[stamp] auto session conversion error', error);
+      }
+    }
 
     return NextResponse.json(
       {
