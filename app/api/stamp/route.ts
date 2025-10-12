@@ -4,11 +4,13 @@ import {
   logsTable,
   machinesTable,
   sitesTable,
+  withRetry,
 } from '@/lib/airtable';
 import { findNearestSiteDetailed } from '@/lib/geo';
 import { LOGS_ALLOWED_FIELDS, filterFields } from '@/lib/airtableSchema';
 import { LogFields } from '@/types';
 import { validateStampRequest } from './validator';
+import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 
@@ -65,12 +67,9 @@ export async function POST(req: NextRequest) {
     const machineRecordId = machineRecords[0].id;
 
     const activeSites = await sitesTable.select({ filterByFormula: '{active} = 1' }).all();
-    console.info('[sites:summary]', {
+    logger.info('stamp active sites summary', {
       count: activeSites.length,
       hasAcoru: activeSites.some((s) => s.fields.name === 'Acoru合同会社'),
-      acoruActive:
-        activeSites.find((s) => s.fields.name === 'Acoru合同会社')?.fields.active ?? null,
-      acoruHasPoly: !!activeSites.find((s) => s.fields.name === 'Acoru合同会社')?.fields.polygon_geojson,
     });
     const { site: nearestSite, method: decisionMethod, nearestDistanceM } =
       findNearestSiteDetailed(lat, lon, activeSites);
@@ -104,7 +103,9 @@ export async function POST(req: NextRequest) {
       fields.timestamp = timestamp;
     }
 
-    const createdRecords = await logsTable.create([{ fields }], { typecast: true });
+    const createdRecords = await withRetry(() =>
+      logsTable.create([{ fields }], { typecast: true })
+    );
     const created = createdRecords[0];
 
     if (created) {
@@ -118,14 +119,25 @@ export async function POST(req: NextRequest) {
           cache: 'no-store',
         });
         if (!response.ok) {
-          console.warn('[stamp] auto session conversion failed', {
+          logger.warn('stamp auto session conversion failed', {
             outLogId,
             status: response.status,
           });
         }
       } catch (error) {
-        console.warn('[stamp] auto session conversion error', error);
+        logger.warn('stamp auto session conversion error', {
+          outLogId,
+          error:
+            error instanceof Error
+              ? { name: error.name, message: error.message }
+              : error,
+        });
       }
+      logger.info('stamp record created', {
+        userId: session.user.id,
+        recordId: outLogId,
+        type,
+      });
     }
 
     return NextResponse.json(
@@ -139,7 +151,7 @@ export async function POST(req: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    console.error('Failed to record stamp:', error);
+    logger.error('Failed to record stamp', error);
     return errorResponse(
       'INTERNAL_ERROR',
       'Internal Server Error',
