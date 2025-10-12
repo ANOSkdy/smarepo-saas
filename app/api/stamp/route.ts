@@ -1,4 +1,8 @@
+// Ensure this route is built and executed on the Node.js runtime (NOT Edge)
+export const runtime = 'nodejs';
+
 import { NextRequest, NextResponse } from 'next/server';
+// (intentionally no static import for the worker)
 import { auth } from '@/lib/auth';
 import {
   logsTable,
@@ -11,8 +15,6 @@ import { LOGS_ALLOWED_FIELDS, filterFields } from '@/lib/airtableSchema';
 import { LogFields } from '@/types';
 import { validateStampRequest } from './validator';
 import { logger } from '@/lib/logger';
-
-export const runtime = 'nodejs';
 
 function errorResponse(
   code: string,
@@ -111,6 +113,18 @@ export async function POST(req: NextRequest) {
     if (created) {
       const baseUrl = req.nextUrl.origin;
       const outLogId = created.id;
+      try {
+        if (type === 'OUT') {
+          void (async () => {
+            const { createSessionAndIndexFromOutLog } = await import(
+              '@/lib/services/sessionWorker'
+            );
+            await createSessionAndIndexFromOutLog(outLogId);
+          })();
+        }
+      } catch (e) {
+        console.error('[stamp] failed to enqueue session worker', e);
+      }
       try {
         const response = await fetch(`${baseUrl}/api/out-to-session/from-logs`, {
           method: 'POST',
