@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo } from 'react';
 
 type CalendarHeaderProps = {
@@ -23,31 +24,41 @@ export default function CalendarHeader({ year, month, onPrev, onNext, onReset }:
         <h2 className="text-xl font-semibold text-gray-900">月次カレンダー</h2>
         <p className="text-sm text-gray-500">月単位で稼働状況を確認し、必要に応じて日次の詳細を開けます。</p>
       </div>
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onPrev}
-          className="tap-target rounded-lg border border-brand-border bg-brand-surface-alt px-3 py-2 text-sm font-semibold text-brand-text shadow-sm transition hover:bg-brand-surface"
-        >
-          前月
-        </button>
-        <div className="text-sm font-medium text-brand-text" aria-live="polite">
-          {label}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onPrev}
+            className="tap-target rounded-lg border border-brand-border bg-brand-surface-alt px-3 py-2 text-sm font-semibold text-brand-text shadow-sm transition hover:bg-brand-surface"
+          >
+            前月
+          </button>
+          <div className="text-sm font-medium text-brand-text" aria-live="polite">
+            {label}
+          </div>
+          <button
+            type="button"
+            onClick={onNext}
+            className="tap-target rounded-lg border border-brand-border bg-brand-surface-alt px-3 py-2 text-sm font-semibold text-brand-text shadow-sm transition hover:bg-brand-surface"
+          >
+            次月
+          </button>
+          <button
+            type="button"
+            onClick={onReset}
+            className="tap-target rounded-lg border border-brand-border bg-brand-primary/10 px-3 py-2 text-sm font-semibold text-brand-primary transition hover:bg-brand-primary/20"
+          >
+            今月
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onNext}
-          className="tap-target rounded-lg border border-brand-border bg-brand-surface-alt px-3 py-2 text-sm font-semibold text-brand-text shadow-sm transition hover:bg-brand-surface"
+        <Link
+          href={`/api/reports/month?year=${year}&month=${month}`}
+          prefetch={false}
+          className="self-start rounded-md border border-gray-300 px-3 py-1 text-sm font-medium text-black transition hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-400"
+          aria-label="Excel出力"
         >
-          次月
-        </button>
-        <button
-          type="button"
-          onClick={onReset}
-          className="tap-target rounded-lg border border-brand-border bg-brand-primary/10 px-3 py-2 text-sm font-semibold text-brand-primary transition hover:bg-brand-primary/20"
-        >
-          今月
-        </button>
+          Excel出力
+        </Link>
       </div>
     </div>
   );
