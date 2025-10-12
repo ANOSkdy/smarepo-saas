@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { upsertByCompositeKey } from '../../../src/lib/airtable/upsert';
+import { withRetry } from '@/lib/airtable';
+import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 
@@ -178,18 +180,29 @@ export async function POST(request: NextRequest): Promise<Response> {
   };
 
   try {
-    await upsertByCompositeKey<UpsertFields>({
-      table: SESSIONS_TABLE,
+    logger.info('out-to-session upsert start', { key });
+    const sessionResult = await withRetry(() =>
+      upsertByCompositeKey<UpsertFields>({
+        table: SESSIONS_TABLE,
+        key,
+        payload: baseFields,
+      })
+    );
+    const reportResult = await withRetry(() =>
+      upsertByCompositeKey<UpsertFields>({
+        table: REPORT_INDEX_TABLE,
+        key,
+        payload: baseFields,
+      })
+    );
+    logger.info('out-to-session upsert completed', {
       key,
-      payload: baseFields,
-    });
-    await upsertByCompositeKey<UpsertFields>({
-      table: REPORT_INDEX_TABLE,
-      key,
-      payload: baseFields,
+      sessionRecordId: sessionResult.id,
+      reportRecordId: reportResult.id,
     });
     return Response.json({ ok: true, hours, key });
   } catch (error) {
+    logger.error('out-to-session upsert failed', error);
     const message = error instanceof Error ? error.message : 'internal error';
     return Response.json({ ok: false, message }, { status: 500 });
   }
