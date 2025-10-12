@@ -1,6 +1,7 @@
 // lib/services/sessionWorker.ts
 // OUTログをトリガに Session と ReportIndex を自動生成する軽量ワーカー
 // 変更点: airtable を関数内 dynamic import 化し、トップレベル副作用を排除
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 const LOGS_TABLE = process.env.AIRTABLE_TABLE_LOGS ?? 'Logs';
 const SESSIONS_TABLE = process.env.AIRTABLE_TABLE_SESSIONS ?? 'Session';
