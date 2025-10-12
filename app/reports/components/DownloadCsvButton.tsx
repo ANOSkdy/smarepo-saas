@@ -22,9 +22,9 @@ export function DownloadCsvButton({ filters, disabled }: DownloadCsvButtonProps)
         year: String(filters.year),
         month: String(filters.month),
       });
-      if (filters.siteId) params.set('siteId', filters.siteId);
-      if (filters.userId) params.set('userId', filters.userId);
-      if (filters.machineId) params.set('machineId', filters.machineId);
+      if (filters.sitename) params.set('sitename', filters.sitename);
+      if (filters.username) params.set('username', filters.username);
+      if (filters.machinename) params.set('machinename', filters.machinename);
 
       const response = await fetch(`/api/report-index/search?${params.toString()}`, {
         method: 'GET',
@@ -35,14 +35,21 @@ export function DownloadCsvButton({ filters, disabled }: DownloadCsvButtonProps)
         throw new Error(data.message ?? 'CSVの取得に失敗しました');
       }
       const records: ReportRecord[] = Array.isArray(data.records) ? data.records : [];
-      const headers = ['date', 'username', 'sitename', 'machinename', 'workdescription', 'hours'];
+      const headers = [
+        'sitename',
+        'username',
+        'machinename',
+        'workdescription',
+        'hours',
+        'date',
+      ];
       const rows = records.map((record) => [
-        record.date,
-        record.username,
         record.sitename,
+        record.username,
         record.machinename,
         record.workdescription,
         record.hours.toFixed(2),
+        record.date,
       ]);
       const csv = toCsv({ headers, rows, includeBom: true });
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

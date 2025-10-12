@@ -1,10 +1,6 @@
 import { ReportsContent, type ReportRecord } from './components/ResultsTable';
 import type { FiltersValue } from './components/Filters';
-import {
-  buildAndFormula,
-  listRecords,
-  type AirtableRecord,
-} from '../../src/lib/airtable/client';
+import { listRecords, type AirtableRecord } from '../../src/lib/airtable/client';
 
 const REPORT_INDEX_TABLE = process.env.AIRTABLE_TABLE_REPORT_INDEX || 'ReportIndex';
 const JST_OFFSET_MINUTES = 9 * 60;
@@ -20,12 +16,45 @@ type ReportIndexFields = {
   hours?: number;
 };
 
-type CompletedReportIndexFields = ReportIndexFields & { date: string; hours: number };
+type CompletedReportIndexFields = ReportIndexFields & {
+  date: string;
+  workdescription: string;
+  hours: number;
+};
 
 function isCompletedRecord(
   record: AirtableRecord<ReportIndexFields>
 ): record is AirtableRecord<CompletedReportIndexFields> {
-  return typeof record.fields.date === 'string' && typeof record.fields.hours === 'number';
+  const fields = record.fields;
+  return (
+    typeof fields.date === 'string' &&
+    typeof fields.workdescription === 'string' &&
+    typeof fields.hours === 'number'
+  );
+}
+
+function escapeFormulaValue(value: string): string {
+  return value.replace(/'/g, "\\'");
+}
+
+function buildFilterFormula(filters: FiltersValue): string {
+  const clauses = [`({year}=${filters.year})`, `({month}=${filters.month})`];
+  if (filters.sitename) {
+    clauses.push(
+      `SEARCH(LOWER('${escapeFormulaValue(filters.sitename)}'), LOWER({sitename}&''))`
+    );
+  }
+  if (filters.username) {
+    clauses.push(
+      `SEARCH(LOWER('${escapeFormulaValue(filters.username)}'), LOWER({username}&''))`
+    );
+  }
+  if (filters.machinename) {
+    clauses.push(
+      `SEARCH(LOWER('${escapeFormulaValue(filters.machinename)}'), LOWER({machinename}&''))`
+    );
+  }
+  return `AND(${clauses.join(',')})`;
 }
 
 function getCurrentJstYearMonth(): { year: number; month: number } {
@@ -36,21 +65,15 @@ function getCurrentJstYearMonth(): { year: number; month: number } {
 }
 
 async function fetchInitialRecords(filters: FiltersValue): Promise<ReportRecord[]> {
-  const filterFormula = buildAndFormula({
-    year: filters.year,
-    month: filters.month,
-    ...(filters.siteId ? { siteId: filters.siteId } : {}),
-    ...(filters.userId ? { userId: filters.userId } : {}),
-    ...(filters.machineId ? { machineId: filters.machineId } : {}),
-  });
   try {
     const records = await listRecords<ReportIndexFields>({
       table: REPORT_INDEX_TABLE,
-      filterByFormula: filterFormula,
+      filterByFormula: buildFilterFormula(filters),
       fields: ['date', 'username', 'sitename', 'machinename', 'workdescription', 'hours'],
       sort: [
         { field: 'sitename', direction: 'asc' },
         { field: 'username', direction: 'asc' },
+        { field: 'machinename', direction: 'asc' },
         { field: 'date', direction: 'asc' },
       ],
     });
@@ -80,9 +103,9 @@ export default async function ReportsPage() {
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
       <header className="space-y-2">
         <p className="text-sm font-medium text-primary">帳票出力</p>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">稼働セッション集計</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">稼働集計</h1>
         <p className="text-sm text-muted-foreground">
-          月次の稼働実績を検索し、CSVでダウンロードできます。
+          月次の稼働実績を名称で検索し、PDF・Excel（自由列）・CSVでダウンロードできます。
         </p>
       </header>
       <ReportsContent initialRecords={initialRecords} initialFilter={initialFilter} />
