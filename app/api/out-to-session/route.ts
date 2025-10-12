@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { upsertByCompositeKey } from '../../../src/lib/airtable/upsert';
 import { withRetry } from '@/lib/airtable';
 import { logger } from '@/lib/logger';
+import { upsertReportIndexByDate } from '@/lib/services/reportIndexWorker';
 
 export const runtime = 'nodejs';
 
@@ -195,6 +196,19 @@ export async function POST(request: NextRequest): Promise<Response> {
         payload: baseFields,
       })
     );
+    try {
+      const upserted = await upsertReportIndexByDate(dateString);
+      logger.info('out-to-session report index ensured', {
+        date: dateString,
+        upserted: upserted.upserted,
+        recordId: upserted.id,
+      });
+    } catch (error) {
+      logger.warn('out-to-session report index ensure failed', {
+        date: dateString,
+        error: error instanceof Error ? { name: error.name, message: error.message } : error,
+      });
+    }
     logger.info('out-to-session upsert completed', {
       key,
       sessionRecordId: sessionResult.id,
