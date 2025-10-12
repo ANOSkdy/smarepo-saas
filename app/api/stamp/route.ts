@@ -2,6 +2,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
+// (intentionally no static import for the worker)
 import { auth } from '@/lib/auth';
 import {
   logsTable,
