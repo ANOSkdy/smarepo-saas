@@ -11,6 +11,7 @@ import { LOGS_ALLOWED_FIELDS, filterFields } from '@/lib/airtableSchema';
 import { LogFields } from '@/types';
 import { validateStampRequest } from './validator';
 import { logger } from '@/lib/logger';
+import { createSessionAndIndexFromOutLog } from '@/lib/services/sessionWorker';
 
 export const runtime = 'nodejs';
 
@@ -111,6 +112,14 @@ export async function POST(req: NextRequest) {
     if (created) {
       const baseUrl = req.nextUrl.origin;
       const outLogId = created.id;
+      try {
+        if (type === 'OUT') {
+          // eslint-disable-next-line @typescript-eslint/no-floating-promises
+          createSessionAndIndexFromOutLog(outLogId);
+        }
+      } catch (e) {
+        console.error('[stamp] failed to enqueue session worker', e);
+      }
       try {
         const response = await fetch(`${baseUrl}/api/out-to-session/from-logs`, {
           method: 'POST',
