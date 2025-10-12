@@ -25,6 +25,12 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "exceljs": [
+        "./src/lib/exceljs"
+      ],
+      "exceljs/*": [
+        "./src/lib/exceljs/*"
       ]
     }
   },
