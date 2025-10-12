@@ -64,6 +64,10 @@ test('buildFreeUserColumnsWorkbook outputs expected sheets and formulas', async 
   assert.equal(freeSheet.getCell('C1').value, 5);
   assert.equal(freeSheet.getCell('A2').value, '日付');
 
+  const [view] = freeSheet.views ?? [];
+  assert.equal(view?.state, 'frozen');
+  assert.equal(view?.ySplit, 2);
+
   const formulaCell = freeSheet.getCell('E3');
   assert.ok(formulaCell.value && typeof formulaCell.value === 'object');
   assert.equal(

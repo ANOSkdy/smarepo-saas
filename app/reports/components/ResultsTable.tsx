@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Filters, type FiltersOptions, type FiltersValue } from './Filters';
-import { DownloadCsvButton } from './DownloadCsvButton';
+import ActionBar from './ActionBar';
 
 export type ReportRecord = {
   id: string;
@@ -106,9 +106,6 @@ export function ReportsContent({ initialRecords, initialFilter }: ReportsContent
   const [records, setRecords] = useState<ReportRecord[]>(initialRecords);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedFormat, setSelectedFormat] = useState<'pdf' | 'excel'>('pdf');
-  const [isExcelDownloading, setIsExcelDownloading] = useState(false);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     setRecords(initialRecords);
@@ -134,7 +131,6 @@ export function ReportsContent({ initialRecords, initialFilter }: ReportsContent
   const handleSearch = async () => {
     setIsLoading(true);
     setError(null);
-    setDownloadError(null);
     try {
       const params = new URLSearchParams({
         year: String(filters.year),
@@ -179,95 +175,9 @@ export function ReportsContent({ initialRecords, initialFilter }: ReportsContent
         </div>
       ) : null}
       <ResultsTable records={records} isLoading={isLoading} />
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        <label className="text-sm font-medium text-muted-foreground" htmlFor="report-format">
-          <span className="sr-only">出力形式</span>
-          <select
-            id="report-format"
-            value={selectedFormat}
-            onChange={(event) =>
-              setSelectedFormat(event.target.value as 'pdf' | 'excel')
-            }
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="出力形式を選択"
-            disabled={isLoading}
-          >
-            <option value="pdf">PDF</option>
-            <option value="excel">Excel（自由列）</option>
-          </select>
-        </label>
-        {selectedFormat === 'pdf' ? (
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted"
-            onClick={() => setDownloadError('PDF出力は現在ご利用いただけません。')}
-            disabled={isLoading}
-          >
-            PDF出力
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={async () => {
-              setDownloadError(null);
-              setIsExcelDownloading(true);
-              try {
-                const response = await fetch('/api/reports/export/excel', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    year: filters.year,
-                    month: filters.month,
-                    sitename: filters.sitename?.trim(),
-                    username: filters.username?.trim(),
-                    machinename: filters.machinename?.trim(),
-                  }),
-                });
-                if (!response.ok) {
-                  const data = await response.json().catch(() => null);
-                  const message =
-                    data && typeof data.message === 'string'
-                      ? data.message
-                      : 'Excelのダウンロードに失敗しました';
-                  throw new Error(message);
-                }
-                const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                const month = String(filters.month).padStart(2, '0');
-                link.href = url;
-                link.download = `report-${filters.year}${month}.xlsx`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-              } catch (downloadError_) {
-                const message =
-                  downloadError_ instanceof Error
-                    ? downloadError_.message
-                    : 'Excelのダウンロードに失敗しました';
-                setDownloadError(message);
-              } finally {
-                setIsExcelDownloading(false);
-              }
-            }}
-            disabled={isLoading || isExcelDownloading}
-            aria-live="polite"
-          >
-            {isExcelDownloading ? 'ダウンロード中...' : 'Excel出力'}
-          </button>
-        )}
-        <DownloadCsvButton
-          filters={filters}
-          disabled={isLoading || isExcelDownloading}
-        />
+      <div className="mt-4">
+        <ActionBar params={filters} hasData={records.length > 0} />
       </div>
-      {downloadError ? (
-        <p role="status" aria-live="polite" className="text-right text-xs text-destructive">
-          {downloadError}
-        </p>
-      ) : null}
     </section>
   );
 }
