@@ -11,6 +11,7 @@
     "diag:p1": "tsx scripts/p1-diagnostics.ts"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "airtable": "^0.12.2",
     "bcryptjs": "^3.0.2",
     "next": "15.5.2",
