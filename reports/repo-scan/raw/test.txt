@@ -1,0 +1,129 @@
+TAP version 13
+# Subtest: globals define accessible color tokens
+ok 1 - globals define accessible color tokens
+  ---
+  duration_ms: 2.227742
+  ...
+# Subtest: tailwind brand palette references css variables
+ok 2 - tailwind brand palette references css variables
+  ---
+  duration_ms: 0.35668
+  ...
+# Subtest: skip link points to main landmark
+ok 3 - skip link points to main landmark
+  ---
+  duration_ms: 2.650568
+  ...
+# Subtest: protected layout exposes navigation landmark
+ok 4 - protected layout exposes navigation landmark
+  ---
+  duration_ms: 0.427216
+  ...
+# Subtest: logout flows return to the unified login UI
+ok 5 - logout flows return to the unified login UI
+  ---
+  duration_ms: 0.704516
+  ...
+# Subtest: filterFields removes unknown keys and nulls
+ok 6 - filterFields removes unknown keys and nulls
+  ---
+  duration_ms: 42.882486
+  ...
+# Subtest: buildFreeUserColumnsWorkbook outputs expected sheets and formulas
+ok 7 - buildFreeUserColumnsWorkbook outputs expected sheets and formulas
+  ---
+  duration_ms: 16.474197
+  ...
+# [geo] polygon parse failed {
+#   raw: 'invalid',
+#   error: SyntaxError: Unexpected token 'i', "invalid" is not valid JSON
+#       at JSON.parse (<anonymous>)
+#       at extractGeometry (/workspace/smarepo-saas/tests/dist/lib/geo.js:22:29)
+#       at findNearestSiteDetailed (/workspace/smarepo-saas/tests/dist/lib/geo.js:73:50)
+#       at TestContext.<anonymous> (file:///workspace/smarepo-saas/tests/geo.test.mjs:54:18)
+#       at Test.runInAsyncScope (node:async_hooks:206:9)
+#       at Test.run (node:internal/test_runner/test:796:25)
+#       at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+#       at Test.postRun (node:internal/test_runner/test:889:19)
+#       at Test.run (node:internal/test_runner/test:835:12)
+#       at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+# }
+# Subtest: findNearestSite prioritizes polygon containment
+ok 8 - findNearestSite prioritizes polygon containment
+  ---
+  duration_ms: 2.175733
+  ...
+# Subtest: findNearestSite falls back to nearest distance
+ok 9 - findNearestSite falls back to nearest distance
+  ---
+  duration_ms: 3.865288
+  ...
+# Subtest: pointInGeometry excludes holes
+ok 10 - pointInGeometry excludes holes
+  ---
+  duration_ms: 0.377926
+  ...
+# Subtest: extractGeometry resolves FeatureCollection polygons
+ok 11 - extractGeometry resolves FeatureCollection polygons
+  ---
+  duration_ms: 0.302594
+  ...
+# Subtest: createLocationErrorFromCode maps browser error codes
+ok 12 - createLocationErrorFromCode maps browser error codes
+  ---
+  duration_ms: 1.689373
+  ...
+# Subtest: normalizeToLocationError preserves custom errors and falls back to unknown
+ok 13 - normalizeToLocationError preserves custom errors and falls back to unknown
+  ---
+  duration_ms: 0.273801
+  ...
+# Subtest: out-to-session route declares node runtime
+ok 14 - out-to-session route declares node runtime
+  ---
+  duration_ms: 6.401898
+  ...
+# Subtest: out-to-session route uses composite upsert
+ok 15 - out-to-session route uses composite upsert
+  ---
+  duration_ms: 1.437295
+  ...
+# Subtest: backfill route throttles conversion calls
+ok 16 - backfill route throttles conversion calls
+  ---
+  duration_ms: 1.437756
+  ...
+# Subtest: validateStampRequest fails on missing fields
+ok 17 - validateStampRequest fails on missing fields
+  ---
+  duration_ms: 1.549471
+  ...
+# Subtest: validateStampRequest succeeds on valid data
+ok 18 - validateStampRequest succeeds on valid data
+  ---
+  duration_ms: 0.213073
+  ...
+# Subtest: validateStampRequest fails on invalid type
+ok 19 - validateStampRequest fails on invalid type
+  ---
+  duration_ms: 2.020449
+  ...
+# Subtest: validateStampRequest fails on invalid accuracy type
+ok 20 - validateStampRequest fails on invalid accuracy type
+  ---
+  duration_ms: 0.210341
+  ...
+# Subtest: validateStampRequest fails on invalid clientDecision
+ok 21 - validateStampRequest fails on invalid clientDecision
+  ---
+  duration_ms: 0.217092
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11692.641028

@@ -1,0 +1,524 @@
+{
+  "generatedAt": "2025-10-12T08:28:27.260Z",
+  "root": "/workspace/smarepo-saas",
+  "topLevelDirs": [
+    {
+      "name": ".git"
+    },
+    {
+      "name": ".next"
+    },
+    {
+      "name": "app"
+    },
+    {
+      "name": "components"
+    },
+    {
+      "name": "docs"
+    },
+    {
+      "name": "lib"
+    },
+    {
+      "name": "node_modules"
+    },
+    {
+      "name": "public"
+    },
+    {
+      "name": "reports"
+    },
+    {
+      "name": "scripts"
+    },
+    {
+      "name": "src"
+    },
+    {
+      "name": "tests"
+    },
+    {
+      "name": "types"
+    }
+  ],
+  "packageJson": {
+    "name": "ai-nippo",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+      "dev": "next dev --turbopack",
+      "build": "next build --turbopack",
+      "start": "next start",
+      "lint": "eslint",
+      "test": "tsc app/api/stamp/validator.ts src/lib/excel/freeUserColumns.ts --module nodenext --target es2020 --moduleResolution nodenext --esModuleInterop --outDir tests/dist && cp tests/dist/app/api/stamp/validator.js tests/dist/validator.js && node --test tests/*.test.mjs",
+      "diag:p1": "tsx scripts/p1-diagnostics.ts"
+    },
+    "dependencies": {
+      "exceljs": "^4.4.0",
+      "airtable": "^0.12.2",
+      "bcryptjs": "^3.0.2",
+      "next": "15.5.2",
+      "next-auth": "5.0.0-beta.29",
+      "react": "19.1.0",
+      "react-dom": "19.1.0"
+    },
+    "optionalDependencies": {
+      "@sparticuz/chromium": "^126.0.0",
+      "puppeteer-core": "^23.5.0"
+    },
+    "devDependencies": {
+      "@eslint/eslintrc": "^3",
+      "@types/bcryptjs": "^3.0.0",
+      "@types/node": "^20",
+      "@types/react": "^19",
+      "@types/react-dom": "^19",
+      "autoprefixer": "10.4.20",
+      "eslint": "^9",
+      "eslint-config-next": "15.5.2",
+      "eslint-config-prettier": "^10.1.8",
+      "postcss": "8.4.47",
+      "prettier": "^3.6.2",
+      "prettier-plugin-tailwindcss": "^0.6.14",
+      "tailwindcss": "3.4.17",
+      "typescript": "^5",
+      "tsx": "^4.19.0"
+    }
+  },
+  "nextConfig": "import type { NextConfig } from 'next';\n\nconst nextConfig: NextConfig = {\n  /* config options here */\n};\n\nexport default nextConfig;\n",
+  "vercelConfig": {
+    "framework": "nextjs",
+    "installCommand": "pnpm install --no-frozen-lockfile",
+    "buildCommand": "pnpm build",
+    "crons": [
+      {
+        "path": "/api/out-to-session/backfill",
+        "schedule": "10 17 * * *"
+      }
+    ]
+  },
+  "eslintConfig": "import { dirname } from 'path';\nimport { fileURLToPath } from 'url';\nimport { FlatCompat } from '@eslint/eslintrc';\nimport eslintConfigPrettier from 'eslint-config-prettier';\nimport jsxA11y from './lib/eslint-plugin-jsx-a11y.js';\n\nconst __filename = fileURLToPath(import.meta.url);\nconst __dirname = dirname(__filename);\n\nconst compat = new FlatCompat({\n  baseDirectory: __dirname,\n});\n\nconst eslintConfig = [\n  ...compat.extends('next/core-web-vitals', 'next/typescript'),\n  {\n    ignores: [\n      'node_modules/**',\n      '.next/**',\n      'out/**',\n      'build/**',\n      'next-env.d.ts',\n      'tests/dist/**',\n    ],\n  },\n  {\n    plugins: { 'jsx-a11y-local': jsxA11y },\n    rules: {\n      'jsx-a11y-local/anchor-is-valid': 'warn',\n      'jsx-a11y-local/click-events-have-key-events': 'warn',\n      'jsx-a11y-local/label-has-associated-control': 'warn',\n      'jsx-a11y/no-autofocus': 'off',\n    },\n  },\n  // Prettierの設定は、他の設定を上書きするため配列の最後に配置します\n  eslintConfigPrettier,\n];\n\nexport default eslintConfig;\n",
+  "tsconfig": {
+    "compilerOptions": {
+      "target": "ES2017",
+      "lib": [
+        "dom",
+        "dom.iterable",
+        "esnext"
+      ],
+      "allowJs": true,
+      "skipLibCheck": true,
+      "strict": true,
+      "noEmit": true,
+      "esModuleInterop": true,
+      "module": "esnext",
+      "moduleResolution": "bundler",
+      "resolveJsonModule": true,
+      "isolatedModules": true,
+      "jsx": "preserve",
+      "incremental": true,
+      "plugins": [
+        {
+          "name": "next"
+        }
+      ],
+      "paths": {
+        "@/*": [
+          "./*"
+        ],
+        "exceljs": [
+          "./src/lib/exceljs"
+        ],
+        "exceljs/*": [
+          "./src/lib/exceljs/*"
+        ]
+      }
+    },
+    "include": [
+      "**/*.ts",
+      "**/*.tsx",
+      "next-env.d.ts",
+      "types/**/*.d.ts",
+      ".next/types/**/*.ts"
+    ],
+    "exclude": [
+      "node_modules"
+    ]
+  },
+  "routes": [
+    {
+      "file": "app/(auth)/login/page.tsx",
+      "path": "/login",
+      "type": "page",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "app/(protected)/dashboard/page.tsx",
+      "path": "/dashboard",
+      "type": "page",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "app/(protected)/nfc/page.tsx",
+      "path": "/nfc",
+      "type": "page",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "app/api/auth/[...nextauth]/route.ts",
+      "path": "/api/auth/[...nextauth]",
+      "type": "route",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "app/api/calendar/day/route.ts",
+      "path": "/api/calendar/day",
+      "type": "route",
+      "methods": [
+        "GET"
+      ],
+      "runtime": "nodejs"
+    },
+    {
+      "file": "app/api/calendar/month/route.ts",
+      "path": "/api/calendar/month",
+      "type": "route",
+      "methods": [
+        "GET"
+      ],
+      "runtime": "nodejs"
+    },
+    {
+      "file": "app/api/masters/sites/route.ts",
+      "path": "/api/masters/sites",
+      "type": "route",
+      "methods": [
+        "GET"
+      ],
+      "runtime": null
+    },
+    {
+      "file": "app/api/masters/work-types/route.ts",
+      "path": "/api/masters/work-types",
+      "type": "route",
+      "methods": [
+        "GET"
+      ],
+      "runtime": null
+    },
+    {
+      "file": "app/api/out-to-session/backfill/route.ts",
+      "path": "/api/out-to-session/backfill",
+      "type": "route",
+      "methods": [
+        "POST"
+      ],
+      "runtime": "nodejs"
+    },
+    {
+      "file": "app/api/out-to-session/from-logs/route.ts",
+      "path": "/api/out-to-session/from-logs",
+      "type": "route",
+      "methods": [
+        "POST"
+      ],
+      "runtime": "nodejs"
+    },
+    {
+      "file": "app/api/out-to-session/route.ts",
+      "path": "/api/out-to-session",
+      "type": "route",
+      "methods": [
+        "POST"
+      ],
+      "runtime": "nodejs"
+    },
+    {
+      "file": "app/api/report-index/search/route.ts",
+      "path": "/api/report-index/search",
+      "type": "route",
+      "methods": [
+        "GET"
+      ],
+      "runtime": "nodejs"
+    },
+    {
+      "file": "app/api/report-index/sync/route.ts",
+      "path": "/api/report-index/sync",
+      "type": "route",
+      "methods": [
+        "POST"
+      ],
+      "runtime": "nodejs"
+    },
+    {
+      "file": "app/api/stamp/route.ts",
+      "path": "/api/stamp",
+      "type": "route",
+      "methods": [
+        "POST"
+      ],
+      "runtime": "nodejs"
+    },
+    {
+      "file": "app/page.tsx",
+      "path": "/",
+      "type": "page",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/(auth)/login/page.jsx",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/(protected)/dashboard/page.jsx",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/(protected)/nfc/page.jsx",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/api/auth/[...nextauth]/route.js",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/api/calendar/day/route.js",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/api/calendar/month/route.js",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/api/masters/sites/route.js",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/api/masters/work-types/route.js",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/api/out-to-session/backfill/route.js",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/api/out-to-session/from-logs/route.js",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/api/out-to-session/route.js",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/api/report-index/search/route.js",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/api/report-index/sync/route.js",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/api/stamp/route.js",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    },
+    {
+      "file": "tests/dist/app/page.jsx",
+      "path": null,
+      "type": "other",
+      "methods": [],
+      "runtime": null
+    }
+  ],
+  "env": [
+    {
+      "key": "AIRTABLE_API_KEY",
+      "files": [
+        "/workspace/smarepo-saas/lib/airtable.ts",
+        "/workspace/smarepo-saas/lib/airtable/projects.ts",
+        "/workspace/smarepo-saas/lib/airtable/sessions.ts",
+        "/workspace/smarepo-saas/src/lib/airtable/client.ts",
+        "/workspace/smarepo-saas/tests/dist/lib/airtable.js",
+        "/workspace/smarepo-saas/tests/dist/lib/airtable/projects.js",
+        "/workspace/smarepo-saas/tests/dist/lib/airtable/sessions.js",
+        "/workspace/smarepo-saas/tests/dist/src/lib/airtable/client.js",
+        "/workspace/smarepo-saas/tests/lib/airtable.retry.test.mjs"
+      ]
+    },
+    {
+      "key": "AIRTABLE_BASE_ID",
+      "files": [
+        "/workspace/smarepo-saas/lib/airtable.ts",
+        "/workspace/smarepo-saas/lib/airtable/projects.ts",
+        "/workspace/smarepo-saas/lib/airtable/sessions.ts",
+        "/workspace/smarepo-saas/src/lib/airtable/client.ts",
+        "/workspace/smarepo-saas/tests/dist/lib/airtable.js",
+        "/workspace/smarepo-saas/tests/dist/lib/airtable/projects.js",
+        "/workspace/smarepo-saas/tests/dist/lib/airtable/sessions.js",
+        "/workspace/smarepo-saas/tests/dist/src/lib/airtable/client.js",
+        "/workspace/smarepo-saas/tests/lib/airtable.retry.test.mjs"
+      ]
+    },
+    {
+      "key": "AIRTABLE_TABLE_LOGS",
+      "files": [
+        "/workspace/smarepo-saas/lib/airtable/schema.ts",
+        "/workspace/smarepo-saas/scripts/p1-diagnostics.ts",
+        "/workspace/smarepo-saas/tests/dist/lib/airtable/schema.js",
+        "/workspace/smarepo-saas/tests/dist/scripts/p1-diagnostics.js"
+      ]
+    },
+    {
+      "key": "AIRTABLE_TABLE_PROJECTS",
+      "files": [
+        "/workspace/smarepo-saas/lib/airtable/projects.ts",
+        "/workspace/smarepo-saas/tests/dist/lib/airtable/projects.js"
+      ]
+    },
+    {
+      "key": "AIRTABLE_TABLE_REPORT_INDEX",
+      "files": [
+        "/workspace/smarepo-saas/app/api/out-to-session/from-logs/route.ts",
+        "/workspace/smarepo-saas/app/api/out-to-session/route.ts",
+        "/workspace/smarepo-saas/app/api/report-index/search/route.ts",
+        "/workspace/smarepo-saas/app/api/report-index/sync/route.ts",
+        "/workspace/smarepo-saas/scripts/p1-diagnostics.ts",
+        "/workspace/smarepo-saas/tests/dist/app/api/out-to-session/from-logs/route.js",
+        "/workspace/smarepo-saas/tests/dist/app/api/out-to-session/route.js",
+        "/workspace/smarepo-saas/tests/dist/app/api/report-index/search/route.js",
+        "/workspace/smarepo-saas/tests/dist/app/api/report-index/sync/route.js",
+        "/workspace/smarepo-saas/tests/dist/scripts/p1-diagnostics.js"
+      ]
+    },
+    {
+      "key": "AIRTABLE_TABLE_SESSIONS",
+      "files": [
+        "/workspace/smarepo-saas/app/api/out-to-session/from-logs/route.ts",
+        "/workspace/smarepo-saas/app/api/out-to-session/route.ts",
+        "/workspace/smarepo-saas/app/api/report-index/sync/route.ts",
+        "/workspace/smarepo-saas/lib/airtable/sessions.ts",
+        "/workspace/smarepo-saas/scripts/p1-diagnostics.ts",
+        "/workspace/smarepo-saas/tests/dist/app/api/out-to-session/from-logs/route.js",
+        "/workspace/smarepo-saas/tests/dist/app/api/out-to-session/route.js",
+        "/workspace/smarepo-saas/tests/dist/app/api/report-index/sync/route.js",
+        "/workspace/smarepo-saas/tests/dist/lib/airtable/sessions.js",
+        "/workspace/smarepo-saas/tests/dist/scripts/p1-diagnostics.js"
+      ]
+    },
+    {
+      "key": "APP_BASE_URL",
+      "files": [
+        "/workspace/smarepo-saas/scripts/p1-diagnostics.ts",
+        "/workspace/smarepo-saas/tests/dist/scripts/p1-diagnostics.js"
+      ]
+    },
+    {
+      "key": "NEXT_PUBLIC_DEFAULT_MACHINE_ID",
+      "files": [
+        "/workspace/smarepo-saas/app/(protected)/dashboard/_components/NfcLinkButton.tsx",
+        "/workspace/smarepo-saas/tests/dist/app/(protected)/dashboard/_components/NfcLinkButton.jsx"
+      ]
+    },
+    {
+      "key": "NEXTAUTH_SECRET",
+      "files": [
+        "/workspace/smarepo-saas/lib/auth.ts",
+        "/workspace/smarepo-saas/tests/dist/lib/auth.js"
+      ]
+    },
+    {
+      "key": "TZ",
+      "files": [
+        "/workspace/smarepo-saas/scripts/p1-diagnostics.ts",
+        "/workspace/smarepo-saas/tests/dist/scripts/p1-diagnostics.js"
+      ]
+    }
+  ],
+  "middleware": {
+    "hasAuthMiddleware": true,
+    "matcher": []
+  },
+  "auth": {
+    "hasCredentials": true,
+    "passwordComparison": true,
+    "sessionStrategy": "jwt",
+    "callbacks": {
+      "jwt": true,
+      "session": true
+    },
+    "logsSecretWarning": true
+  },
+  "airtable": [
+    {
+      "file": "lib/airtable/logs.ts",
+      "tables": []
+    },
+    {
+      "file": "lib/airtable/projects.ts",
+      "tables": [
+        "Projects"
+      ]
+    },
+    {
+      "file": "lib/airtable/schema.ts",
+      "tables": []
+    },
+    {
+      "file": "lib/airtable/sessions.ts",
+      "tables": [
+        "Session"
+      ]
+    },
+    {
+      "file": "lib/airtable/users.ts",
+      "tables": []
+    }
+  ]
+}
