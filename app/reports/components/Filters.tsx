@@ -5,9 +5,15 @@ import { FormEvent } from 'react';
 export type FiltersValue = {
   year: number;
   month: number;
-  siteId?: string;
-  userId?: string;
-  machineId?: string;
+  sitename?: string;
+  username?: string;
+  machinename?: string;
+};
+
+export type FiltersOptions = {
+  sitenames: string[];
+  usernames: string[];
+  machinenames: string[];
 };
 
 type FiltersProps = {
@@ -15,13 +21,14 @@ type FiltersProps = {
   onChange: (value: FiltersValue) => void;
   onSearch: () => void;
   disabled?: boolean;
+  options: FiltersOptions;
 };
 
 function formatMonth({ year, month }: { year: number; month: number }): string {
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}`;
 }
 
-export function Filters({ value, onChange, onSearch, disabled }: FiltersProps) {
+export function Filters({ value, onChange, onSearch, disabled, options }: FiltersProps) {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onSearch();
@@ -53,46 +60,82 @@ export function Filters({ value, onChange, onSearch, disabled }: FiltersProps) {
         />
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium text-muted-foreground" htmlFor="siteId">
-          現場ID
+        <label className="text-sm font-medium text-muted-foreground" htmlFor="sitename">
+          現場名
         </label>
         <input
-          id="siteId"
+          id="sitename"
           type="text"
-          value={value.siteId ?? ''}
-          onChange={(event) => onChange({ ...value, siteId: event.target.value || undefined })}
+          list="report-sitenames"
+          value={value.sitename ?? ''}
+          onChange={(event) =>
+            onChange({ ...value, sitename: event.target.value || undefined })
+          }
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="S001"
+          placeholder="例: 東京第一現場"
           disabled={disabled}
+          aria-describedby="sitename-hint"
         />
+        <datalist id="report-sitenames">
+          {options.sitenames.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+        <span id="sitename-hint" className="sr-only">
+          現場名を入力すると候補が表示されます
+        </span>
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium text-muted-foreground" htmlFor="userId">
-          作業員ID
+        <label className="text-sm font-medium text-muted-foreground" htmlFor="username">
+          作業員名
         </label>
         <input
-          id="userId"
+          id="username"
           type="text"
-          value={value.userId ?? ''}
-          onChange={(event) => onChange({ ...value, userId: event.target.value || undefined })}
+          list="report-usernames"
+          value={value.username ?? ''}
+          onChange={(event) =>
+            onChange({ ...value, username: event.target.value || undefined })
+          }
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="U001"
+          placeholder="例: 山田太郎"
           disabled={disabled}
+          aria-describedby="username-hint"
         />
+        <datalist id="report-usernames">
+          {options.usernames.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+        <span id="username-hint" className="sr-only">
+          作業員名を入力すると候補が表示されます
+        </span>
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium text-muted-foreground" htmlFor="machineId">
-          機械ID
+        <label className="text-sm font-medium text-muted-foreground" htmlFor="machinename">
+          機械名
         </label>
         <input
-          id="machineId"
+          id="machinename"
           type="text"
-          value={value.machineId ?? ''}
-          onChange={(event) => onChange({ ...value, machineId: event.target.value || undefined })}
+          list="report-machinenames"
+          value={value.machinename ?? ''}
+          onChange={(event) =>
+            onChange({ ...value, machinename: event.target.value || undefined })
+          }
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="M001"
+          placeholder="例: クレーンA"
           disabled={disabled}
+          aria-describedby="machinename-hint"
         />
+        <datalist id="report-machinenames">
+          {options.machinenames.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+        <span id="machinename-hint" className="sr-only">
+          機械名を入力すると候補が表示されます
+        </span>
       </div>
       <div className="flex flex-col justify-end">
         <button
