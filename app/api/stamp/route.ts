@@ -16,6 +16,8 @@ import { LogFields } from '@/types';
 import { validateStampRequest } from './validator';
 import { logger } from '@/lib/logger';
 
+const APP_BASE_URL = process.env.APP_BASE_URL ?? process.env.NEXTAUTH_URL ?? '';
+
 function errorResponse(
   code: string,
   reason: string,
@@ -111,8 +113,8 @@ export async function POST(req: NextRequest) {
     const created = createdRecords[0];
 
     if (created) {
-      const baseUrl = req.nextUrl.origin;
       const outLogId = created.id;
+      const baseUrl = req.nextUrl.origin;
       try {
         if (type === 'OUT') {
           void (async () => {
@@ -124,6 +126,34 @@ export async function POST(req: NextRequest) {
         }
       } catch (e) {
         console.error('[stamp] failed to enqueue session worker', e);
+      }
+      try {
+        if (type === 'OUT' && APP_BASE_URL) {
+          const triggerUrl = `${APP_BASE_URL.replace(/\/$/, '')}/api/out-to-session`;
+          void fetch(triggerUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ outLogId }),
+            keepalive: true,
+          }).catch((error) => {
+            logger.warn('stamp auto out-to-session trigger failed', {
+              triggerUrl,
+              outLogId,
+              error:
+                error instanceof Error
+                  ? { name: error.name, message: error.message }
+                  : error,
+            });
+          });
+        }
+      } catch (error) {
+        logger.warn('stamp auto out-to-session trigger error', {
+          outLogId,
+          error:
+            error instanceof Error
+              ? { name: error.name, message: error.message }
+              : error,
+        });
       }
       try {
         const response = await fetch(`${baseUrl}/api/out-to-session/from-logs`, {

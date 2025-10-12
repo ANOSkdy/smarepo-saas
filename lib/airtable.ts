@@ -51,6 +51,10 @@ if (!apiKey || !baseId) {
 
 export const base = new Airtable({ apiKey }).base(baseId);
 
+export function getBase() {
+  return base;
+}
+
 // 型付けされたテーブルを返すヘルパー関数
 const getTypedTable = <T extends FieldSet>(tableName: string): Table<T> => {
   return base(tableName);

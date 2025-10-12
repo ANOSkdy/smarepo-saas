@@ -26,3 +26,8 @@
 ## 画面仕様
 - `/dashboard` は月次カレンダーを表示し、各セルで稼働時間・打刻件数・現場名の要約を確認できます。
 - 日セルをクリックするとドロワーが開き、ユーザー別セッションと打刻明細を閲覧できます。
+
+## 自動セッション生成フロー
+- `/api/stamp` で OUT 打刻が登録されると、ワーカー enqueue と並列で `/api/out-to-session` への非同期 POST を実行します。
+- `/api/out-to-session` は Sessions テーブルに upsert したのち、同日の ReportIndex テーブルへ `date`・`year`・`month` のみを upsert します。
+- テーブル名は `AIRTABLE_TABLE_SESSIONS` / `AIRTABLE_TABLE_REPORT_INDEX` で環境ごとに調整可能です。未設定時は `Sessions` / `ReportIndex` を使用します。
