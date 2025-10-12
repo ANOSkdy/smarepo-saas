@@ -69,6 +69,8 @@ export async function createSessionAndIndexFromOutLog(outLogId: string) {
       console.warn('[sessionWorker] skip: invalid OUT timestamp', { outLogId, outTsStr });
       return;
     }
+    const outTsIso = toIso(outTs);
+    const outDateJst = toJstParts(outTs).dateStr;
 
     const userLink = (out.get('user') as string[] | undefined)?.[0] ?? '';
     const siteName = String(out.get('siteName') ?? '');
@@ -78,26 +80,56 @@ export async function createSessionAndIndexFromOutLog(outLogId: string) {
     const username = String(out.get('userName') ?? out.get('username') ?? '');
     const machineName = String(out.get('machineName') ?? out.get('machineId') ?? '');
 
-    const conds = [`{type}='IN'`];
-    if (userLink) conds.push(`FIND(${q(userLink)}, ARRAYJOIN({user}))`);
-    if (siteName) conds.push(`{siteName}=${q(siteName)}`);
-    if (workDescription) conds.push(`{workDescription}=${q(workDescription)}`);
-    const filterByFormula = `AND(${conds.join(',')})`;
+    const baseConds = [`{type}='IN'`];
+    if (userLink) baseConds.push(`FIND(${q(userLink)}, ARRAYJOIN({user}))`);
+    baseConds.push(`{timestamp} < ${q(outTsIso)}`);
+    const filterByFormula = `AND(${baseConds.join(',')})`;
 
     const candidates = await selectAll(base, LOGS_TABLE, {
       filterByFormula,
       sort: [{ field: 'timestamp', direction: 'desc' }],
-      maxRecords: 50,
-      pageSize: 50,
+      maxRecords: 5,
+      pageSize: 5,
     });
 
-    const inRec = candidates.find((r: any) => {
+    const validCandidates = candidates.filter((r: any) => {
       const ts = new Date(String(r.get('timestamp') ?? ''));
       return !Number.isNaN(ts.getTime()) && ts.getTime() <= outTs.getTime();
     });
 
+    let inRec = validCandidates.find((r: any) => {
+      const ts = new Date(String(r.get('timestamp') ?? ''));
+      if (Number.isNaN(ts.getTime())) return false;
+      return toJstParts(ts).dateStr === outDateJst;
+    });
+
     if (!inRec) {
-      console.info('[sessionWorker] skip: no IN found', { outLogId, conds });
+      inRec = validCandidates[0];
+    }
+
+    if (!inRec) {
+      const twelveHoursAgoIso = toIso(
+        new Date(outTs.getTime() - 12 * 60 * 60 * 1000),
+      );
+      const fallbackConds = [`{type}='IN'`];
+      if (userLink) fallbackConds.push(`FIND(${q(userLink)}, ARRAYJOIN({user}))`);
+      fallbackConds.push(`{timestamp} > ${q(twelveHoursAgoIso)}`);
+      fallbackConds.push(`{timestamp} < ${q(outTsIso)}`);
+      const fallbackFormula = `AND(${fallbackConds.join(',')})`;
+      const fallback = await selectAll(base, LOGS_TABLE, {
+        filterByFormula: fallbackFormula,
+        sort: [{ field: 'timestamp', direction: 'desc' }],
+        maxRecords: 1,
+        pageSize: 1,
+      });
+      inRec = fallback.find((r: any) => {
+        const ts = new Date(String(r.get('timestamp') ?? ''));
+        return !Number.isNaN(ts.getTime()) && ts.getTime() <= outTs.getTime();
+      });
+    }
+
+    if (!inRec) {
+      console.info('[sessionWorker] skip: no IN found', { outLogId, conds: baseConds });
       return;
     }
 

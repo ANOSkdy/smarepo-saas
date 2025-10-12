@@ -16,8 +16,6 @@ import { LogFields } from '@/types';
 import { validateStampRequest } from './validator';
 import { logger } from '@/lib/logger';
 
-const APP_BASE_URL = process.env.APP_BASE_URL ?? process.env.NEXTAUTH_URL ?? '';
-
 function errorResponse(
   code: string,
   reason: string,
@@ -114,7 +112,6 @@ export async function POST(req: NextRequest) {
 
     if (created) {
       const outLogId = created.id;
-      const baseUrl = req.nextUrl.origin;
       try {
         if (type === 'OUT') {
           void (async () => {
@@ -128,16 +125,15 @@ export async function POST(req: NextRequest) {
         console.error('[stamp] failed to enqueue session worker', e);
       }
       try {
-        if (type === 'OUT' && APP_BASE_URL) {
-          const triggerUrl = `${APP_BASE_URL.replace(/\/$/, '')}/api/out-to-session`;
-          void fetch(triggerUrl, {
+        if (type === 'OUT') {
+          logger.info('[auto-session-trigger]', { outLogId });
+          void fetch('/api/out-to-session/from-logs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ outLogId }),
             keepalive: true,
           }).catch((error) => {
-            logger.warn('stamp auto out-to-session trigger failed', {
-              triggerUrl,
+            logger.warn('[auto-session-trigger] fetch failed', {
               outLogId,
               error:
                 error instanceof Error
@@ -147,29 +143,7 @@ export async function POST(req: NextRequest) {
           });
         }
       } catch (error) {
-        logger.warn('stamp auto out-to-session trigger error', {
-          outLogId,
-          error:
-            error instanceof Error
-              ? { name: error.name, message: error.message }
-              : error,
-        });
-      }
-      try {
-        const response = await fetch(`${baseUrl}/api/out-to-session/from-logs`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ outLogId }),
-          cache: 'no-store',
-        });
-        if (!response.ok) {
-          logger.warn('stamp auto session conversion failed', {
-            outLogId,
-            status: response.status,
-          });
-        }
-      } catch (error) {
-        logger.warn('stamp auto session conversion error', {
+        logger.warn('[auto-session-trigger] unexpected error', {
           outLogId,
           error:
             error instanceof Error
