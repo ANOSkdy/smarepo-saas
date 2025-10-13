@@ -124,27 +124,42 @@ export async function POST(req: NextRequest) {
       } catch (e) {
         console.error('[stamp] failed to enqueue session worker', e);
       }
+      let triggerUrl: string | undefined;
       try {
         if (type === 'OUT') {
-          logger.info('[auto-session-trigger]', { outLogId });
-          void fetch('/api/out-to-session/from-logs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ outLogId }),
-            keepalive: true,
-          }).catch((error) => {
-            logger.warn('[auto-session-trigger] fetch failed', {
+          const headers = req.headers;
+          const protocol = headers.get('x-forwarded-proto') ?? 'https';
+          const host =
+            headers.get('x-forwarded-host') ?? headers.get('host') ?? '';
+          if (!host) {
+            logger.warn('[auto-session-trigger] missing host header', {
               outLogId,
-              error:
-                error instanceof Error
-                  ? { name: error.name, message: error.message }
-                  : error,
             });
-          });
+          } else {
+            const baseUrl = `${protocol}://${host}`;
+            triggerUrl = `${baseUrl}/api/out-to-session/from-logs`;
+
+            logger.info('[auto-session-trigger]', { triggerUrl, outLogId });
+            void fetch(triggerUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ outLogId }),
+            }).catch((error) => {
+              logger.warn('[auto-session-trigger] fetch failed', {
+                outLogId,
+                triggerUrl,
+                error:
+                  error instanceof Error
+                    ? { name: error.name, message: error.message }
+                    : error,
+              });
+            });
+          }
         }
       } catch (error) {
         logger.warn('[auto-session-trigger] unexpected error', {
           outLogId,
+          triggerUrl,
           error:
             error instanceof Error
               ? { name: error.name, message: error.message }
