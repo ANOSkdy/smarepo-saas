@@ -22,6 +22,7 @@ interface SessionFields extends FieldSet {
   hours?: number;
 }
 
+// Align default with actual table and avoid accidental single-form fallback
 const SESSIONS_TABLE = process.env.AIRTABLE_TABLE_SESSIONS ?? 'Sessions';
 const apiKey = process.env.AIRTABLE_API_KEY;
 const baseId = process.env.AIRTABLE_BASE_ID;
