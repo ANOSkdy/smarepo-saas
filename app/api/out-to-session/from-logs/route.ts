@@ -173,25 +173,49 @@ function createUpsertPayload(params: {
 }
 
 export async function POST(request: NextRequest): Promise<Response> {
+  let rawBody: unknown;
+  try {
+    rawBody = await request.json();
+  } catch (error) {
+    console.warn('[from-logs] invalid json body', {
+      error: error instanceof Error ? { name: error.name, message: error.message } : error,
+    });
+    return Response.json({ ok: false, reason: 'INVALID_JSON' }, { status: 200 });
+  }
+
   let payload: OutToSessionRequest;
   try {
-    payload = parseRequestBody(await request.json());
+    payload = parseRequestBody(rawBody);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'invalid payload';
-    return Response.json({ ok: false, message }, { status: 400 });
+    if (message === 'outLogId is required') {
+      console.warn('[from-logs] missing outLogId', rawBody);
+      return Response.json({ ok: false, reason: 'MISSING_OUT_LOG_ID' }, { status: 200 });
+    }
+    console.warn('[from-logs] invalid payload', { rawBody, message });
+    return Response.json({ ok: false, reason: 'INVALID_PAYLOAD' }, { status: 200 });
   }
+
+  console.info('[from-logs] start', { outLogId: payload.outLogId });
 
   let outRecord: AirtableRecord<LogFields>;
   try {
     outRecord = await logsTable.find(payload.outLogId);
   } catch (error) {
-    console.error('[out-to-session][from-logs] failed to load OUT log', error);
-    return Response.json({ ok: false, message: 'out log not found' }, { status: 404 });
+    console.warn('[from-logs] out-log-not-found', {
+      outLogId: payload.outLogId,
+      error: error instanceof Error ? { name: error.name, message: error.message } : error,
+    });
+    return Response.json({ ok: false, reason: 'OUT_LOG_NOT_FOUND' }, { status: 200 });
   }
 
   const outFields = outRecord.fields as Record<string, unknown>;
   if (outFields[LOG_FIELDS.type] !== 'OUT') {
-    return Response.json({ ok: false, message: 'log must be OUT type' }, { status: 400 });
+    console.info('[from-logs] no-session', {
+      outLogId: payload.outLogId,
+      reason: 'NOT_OUT',
+    });
+    return Response.json({ ok: false, reason: 'NOT_OUT' }, { status: 200 });
   }
 
   const timestamp = ensureString(outFields[LOG_FIELDS.timestamp]);
@@ -202,7 +226,17 @@ export async function POST(request: NextRequest): Promise<Response> {
   const machineId = firstOrNull(toStringArray(outFields[LOG_FIELDS.machine]));
 
   if (!timestamp || !date || !userId || !siteId || !machineId) {
-    return Response.json({ ok: false, message: 'missing fields' }, { status: 400 });
+    console.warn('[from-logs] missing-fields', {
+      outLogId: payload.outLogId,
+      missing: {
+        timestamp: Boolean(timestamp),
+        date: Boolean(date),
+        userId: Boolean(userId),
+        siteId: Boolean(siteId),
+        machineId: Boolean(machineId),
+      },
+    });
+    return Response.json({ ok: false, reason: 'MISSING_OUT_FIELDS' }, { status: 200 });
   }
 
   const formula = buildInLogFormula({
@@ -227,12 +261,19 @@ export async function POST(request: NextRequest): Promise<Response> {
       [inRecord] = records;
     }
   } catch (error) {
-    console.error('[out-to-session][from-logs] failed to search IN logs', error);
-    return Response.json({ ok: false, message: 'failed to search IN log' }, { status: 500 });
+    console.warn('[from-logs] in-search-failed', {
+      outLogId: payload.outLogId,
+      error: error instanceof Error ? { name: error.name, message: error.message } : error,
+    });
+    return Response.json({ ok: false, reason: 'IN_SEARCH_FAILED' }, { status: 200 });
   }
 
   if (!inRecord) {
-    return Response.json({ ok: false, message: 'IN log not found' }, { status: 200 });
+    console.info('[from-logs] no-session', {
+      outLogId: payload.outLogId,
+      reason: 'NO_IN',
+    });
+    return Response.json({ ok: false, reason: 'NO_IN' }, { status: 200 });
   }
 
   const inFields = inRecord.fields as Record<string, unknown>;
@@ -244,7 +285,8 @@ export async function POST(request: NextRequest): Promise<Response> {
     hours = calculateHours(clockInAt, clockOutAt);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'invalid duration';
-    return Response.json({ ok: false, message }, { status: 400 });
+    console.warn('[from-logs] invalid-duration', { outLogId: payload.outLogId, message });
+    return Response.json({ ok: false, reason: 'INVALID_DURATION' }, { status: 200 });
   }
 
   const username = preferString(
@@ -302,9 +344,16 @@ export async function POST(request: NextRequest): Promise<Response> {
       payload: upsertPayload,
     });
   } catch (error) {
-    console.error('[out-to-session][from-logs] upsert failed', error);
-    return Response.json({ ok: false, message: 'upsert failed' }, { status: 500 });
+    console.warn('[from-logs] upsert-failed', {
+      outLogId: payload.outLogId,
+      error: error instanceof Error ? { name: error.name, message: error.message } : error,
+    });
+    return Response.json({ ok: false, reason: 'UPSERT_FAILED' }, { status: 200 });
   }
 
-  return Response.json({ ok: true, hours, key });
+  console.info('[from-logs] session-created', {
+    outLogId: payload.outLogId,
+    sessionKey: key,
+  });
+  return Response.json({ ok: true, hours, key }, { status: 200 });
 }

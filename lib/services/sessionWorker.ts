@@ -4,7 +4,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const LOGS_TABLE = process.env.AIRTABLE_TABLE_LOGS ?? 'Logs';
-const SESSIONS_TABLE = process.env.AIRTABLE_TABLE_SESSIONS ?? 'Session';
+const SESSIONS_TABLE = process.env.AIRTABLE_TABLE_SESSIONS ?? 'Sessions';
 const REPORT_INDEX_TABLE = process.env.AIRTABLE_TABLE_REPORT_INDEX ?? 'ReportIndex';
 
 const q = (v: unknown) => `'${String(v ?? '').replace(/'/g, "''")}'`; // Airtable式の単引用符エスケープ
@@ -129,7 +129,11 @@ export async function createSessionAndIndexFromOutLog(outLogId: string) {
     }
 
     if (!inRec) {
-      console.info('[sessionWorker] skip: no IN found', { outLogId, conds: baseConds });
+      console.info('[sessionWorker] skip: no IN found', {
+        outLogId,
+        reason: 'NO_IN',
+        baseConds,
+      });
       return;
     }
 
