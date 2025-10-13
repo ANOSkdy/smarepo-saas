@@ -148,6 +148,7 @@ export async function sessionWorkerCreateFromOutLog(
       if (validCandidates.length === 0) {
         console.info('[sessionWorker] skip: no IN found', {
           outLogId,
+          userKey,
           reason: 'NO_IN',
         });
         return { ok: false, reason: 'NO_IN' };
@@ -198,6 +199,7 @@ export async function sessionWorkerCreateFromOutLog(
 
     console.info('[sessionWorker] ensured Session & ReportIndex', {
       outLogId,
+      userKey,
       hours,
       date: dateStr,
       sessionAction: sessionUpsert.action,
