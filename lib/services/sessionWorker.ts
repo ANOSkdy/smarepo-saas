@@ -89,19 +89,25 @@ export async function sessionWorkerCreateFromOutLog(
     const outTsIso = toIso(outTs);
     const outDateJst = toJstParts(outTs).dateStr;
 
-    const userLink = (out.get('user') as string[] | undefined)?.[0] ?? '';
     const siteName = String(out.get('siteName') ?? '');
     const workDescription = String(out.get('workDescription') ?? '');
 
+    // Logs.userId は数値文字列（例: "115"）として格納されるため、そのまま突合キーに使う
     const userId = String(out.get('userId') ?? '');
+    const userKey = userId.trim();
+    if (!userKey) {
+      console.info('[sessionWorker] skip: missing userId on OUT log', { outLogId });
+      return { ok: false, reason: 'MISSING_USERID' };
+    }
     const username = String(out.get('userName') ?? out.get('username') ?? '');
     const machineName = String(out.get('machineName') ?? out.get('machineId') ?? '');
 
     const isoOut = outTsIso;
-    const filterParts = [`{type}='IN'`, `IS_BEFORE({timestamp}, DATETIME_PARSE(${q(isoOut)}))`];
-    if (userLink) {
-      filterParts.splice(1, 0, `FIND(${q(userLink)}, ARRAYJOIN({user}))`);
-    }
+    const filterParts = [
+      `{type}='IN'`,
+      `{userId}=${q(userKey)}`,
+      `IS_BEFORE({timestamp}, DATETIME_PARSE(${q(isoOut)}))`,
+    ];
     const filterByFormula = `AND(${filterParts.join(',')})`;
 
     const candidates = await selectAll(base, LOGS_TABLE, {
@@ -110,7 +116,7 @@ export async function sessionWorkerCreateFromOutLog(
       maxRecords: 5,
       pageSize: 5,
     });
-    console.info('[sessionWorker] primarySearch', { outLogId, hits: candidates.length });
+    console.info('[sessionWorker] primarySearch', { outLogId, userKey, hits: candidates.length });
 
     let validCandidates = candidates.filter((r: any) => {
       const ts = new Date(String(r.get('timestamp') ?? ''));
@@ -123,12 +129,10 @@ export async function sessionWorkerCreateFromOutLog(
       );
       const fallbackParts = [
         `{type}='IN'`,
+        `{userId}=${q(userKey)}`,
         `IS_AFTER({timestamp}, DATETIME_PARSE(${q(twelveHoursAgoIso)}))`,
         `IS_BEFORE({timestamp}, DATETIME_PARSE(${q(isoOut)}))`,
       ];
-      if (userLink) {
-        fallbackParts.splice(1, 0, `FIND(${q(userLink)}, ARRAYJOIN({user}))`);
-      }
       const fallbackFormula = `AND(${fallbackParts.join(',')})`;
       const fallback = await selectAll(base, LOGS_TABLE, {
         filterByFormula: fallbackFormula,
@@ -136,7 +140,7 @@ export async function sessionWorkerCreateFromOutLog(
         maxRecords: 1,
         pageSize: 1,
       });
-      console.info('[sessionWorker] fallbackSearch', { outLogId, hits: fallback.length });
+      console.info('[sessionWorker] fallbackSearch', { outLogId, userKey, hits: fallback.length });
       validCandidates = fallback.filter((r: any) => {
         const ts = new Date(String(r.get('timestamp') ?? ''));
         return !Number.isNaN(ts.getTime()) && ts.getTime() <= outTs.getTime();
