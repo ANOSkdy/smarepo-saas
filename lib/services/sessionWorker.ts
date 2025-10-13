@@ -12,6 +12,62 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 const toIso = (d: Date) => d.toISOString();
 
+type AirtableLogRecordLike = {
+  id?: string;
+  get?: (field: string) => unknown;
+  fields?: Record<string, unknown>;
+};
+
+const coerceEmployeeCode = (value: unknown): string | undefined => {
+  if (typeof value === 'number') {
+    return String(value);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  }
+  return undefined;
+};
+
+const coerceUserRecId = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  }
+  if (value != null) {
+    const str = String(value).trim();
+    return str ? str : undefined;
+  }
+  return undefined;
+};
+
+export function resolveUserIdentity(
+  log: AirtableLogRecordLike | null | undefined,
+): { employeeCode?: string; userRecId?: string } {
+  if (!log) {
+    return {};
+  }
+
+  const getter = typeof log.get === 'function' ? (field: string) => log.get!(field) : undefined;
+  const fields = (log as { fields?: Record<string, unknown> })?.fields ?? {};
+  const direct = getter ? getter('userId') : fields['userId'];
+  const lookup = getter ? getter('userId (from user)') : fields['userId (from user)'];
+  const link = getter ? getter('user') : fields['user'];
+
+  const employeeCode = coerceEmployeeCode(direct) ?? coerceEmployeeCode(lookup);
+  const userRecId = Array.isArray(link)
+    ? coerceUserRecId(link[0])
+    : coerceUserRecId(link);
+
+  return {
+    employeeCode,
+    userRecId,
+  };
+}
+
+const hasUserIdentity = (identity: { employeeCode?: string; userRecId?: string }) =>
+  Boolean(identity.employeeCode || identity.userRecId);
+
 function toJstParts(ts: Date) {
   const jst = new Date(ts.getTime() + 9 * 60 * 60 * 1000);
   const y = jst.getUTCFullYear();
@@ -92,20 +148,36 @@ export async function sessionWorkerCreateFromOutLog(
     const siteName = String(out.get('siteName') ?? '');
     const workDescription = String(out.get('workDescription') ?? '');
 
-    // Logs.userId は数値文字列（例: "115"）として格納されるため、そのまま突合キーに使う
-    const userId = String(out.get('userId') ?? '');
-    const userKey = userId.trim();
-    if (!userKey) {
-      console.info('[sessionWorker] skip: missing userId on OUT log', { outLogId });
+    const outIdentity = resolveUserIdentity(out);
+    const snapshot = {
+      userId: out.get('userId'),
+      userIdFromUser: out.get('userId (from user)'),
+      user: out.get('user'),
+    };
+    if (!hasUserIdentity(outIdentity)) {
+      console.info('[sessionWorker] skip: missing userId on OUT log', {
+        outLogId,
+        identity: outIdentity,
+        snapshot,
+      });
       return { ok: false, reason: 'MISSING_USERID' };
     }
     const username = String(out.get('userName') ?? out.get('username') ?? '');
     const machineName = String(out.get('machineName') ?? out.get('machineId') ?? '');
 
     const isoOut = outTsIso;
+    const userMatches: string[] = [];
+    if (outIdentity.employeeCode) {
+      userMatches.push(`{userId}=${q(outIdentity.employeeCode)}`);
+    }
+    if (outIdentity.userRecId) {
+      userMatches.push(`FIND(${q(outIdentity.userRecId)}, ARRAYJOIN({user})) > 0`);
+    }
+    const userClause =
+      userMatches.length === 1 ? userMatches[0] : `OR(${userMatches.join(',')})`;
     const filterParts = [
       `{type}='IN'`,
-      `{userId}=${q(userKey)}`,
+      userClause,
       `IS_BEFORE({timestamp}, DATETIME_PARSE(${q(isoOut)}))`,
     ];
     const filterByFormula = `AND(${filterParts.join(',')})`;
@@ -116,7 +188,12 @@ export async function sessionWorkerCreateFromOutLog(
       maxRecords: 5,
       pageSize: 5,
     });
-    console.info('[sessionWorker] primarySearch', { outLogId, userKey, hits: candidates.length });
+    console.info('[sessionWorker] primarySearch', {
+      outLogId,
+      identity: outIdentity,
+      filter: filterByFormula,
+      hits: candidates.length,
+    });
 
     let validCandidates = candidates.filter((r: any) => {
       const ts = new Date(String(r.get('timestamp') ?? ''));
@@ -129,7 +206,7 @@ export async function sessionWorkerCreateFromOutLog(
       );
       const fallbackParts = [
         `{type}='IN'`,
-        `{userId}=${q(userKey)}`,
+        userClause,
         `IS_AFTER({timestamp}, DATETIME_PARSE(${q(twelveHoursAgoIso)}))`,
         `IS_BEFORE({timestamp}, DATETIME_PARSE(${q(isoOut)}))`,
       ];
@@ -140,7 +217,12 @@ export async function sessionWorkerCreateFromOutLog(
         maxRecords: 1,
         pageSize: 1,
       });
-      console.info('[sessionWorker] fallbackSearch', { outLogId, userKey, hits: fallback.length });
+      console.info('[sessionWorker] fallbackSearch', {
+        outLogId,
+        identity: outIdentity,
+        filter: fallbackFormula,
+        hits: fallback.length,
+      });
       validCandidates = fallback.filter((r: any) => {
         const ts = new Date(String(r.get('timestamp') ?? ''));
         return !Number.isNaN(ts.getTime()) && ts.getTime() <= outTs.getTime();
@@ -148,7 +230,8 @@ export async function sessionWorkerCreateFromOutLog(
       if (validCandidates.length === 0) {
         console.info('[sessionWorker] skip: no IN found', {
           outLogId,
-          userKey,
+          identity: outIdentity,
+          filter: fallbackFormula,
           reason: 'NO_IN',
         });
         return { ok: false, reason: 'NO_IN' };
@@ -170,9 +253,21 @@ export async function sessionWorkerCreateFromOutLog(
     const hours = round2(clamp((outTs.getTime() - inTs.getTime()) / 3600000, 0, 24));
     const { year, month, day, dateStr } = toJstParts(inTs);
 
+    const inIdentity = resolveUserIdentity(inRec);
+    const sessionEmployeeCode = outIdentity.employeeCode ?? inIdentity.employeeCode;
+    const sessionUserRecId = outIdentity.userRecId ?? inIdentity.userRecId;
+    const sessionUserId = sessionEmployeeCode ?? sessionUserRecId ?? '';
+    if (!sessionEmployeeCode && sessionUserRecId) {
+      console.info('[sessionWorker] session uses userRecId fallback', {
+        outLogId,
+        sessionUserRecId,
+      });
+    }
+
     const sessionFields: Record<string, any> = {
       year, month, day,
-      userId, username,
+      userId: sessionUserId,
+      username,
       sitename: siteName,
       workdescription: workDescription,
       clockInAt: toIso(inTs),
@@ -180,12 +275,13 @@ export async function sessionWorkerCreateFromOutLog(
       hours,
     };
     const sessKey =
-      `AND({userId}=${q(userId)}, {clockInAt}=${q(sessionFields.clockInAt)}, {clockOutAt}=${q(sessionFields.clockOutAt)})`;
+      `AND({userId}=${q(sessionUserId)}, {clockInAt}=${q(sessionFields.clockInAt)}, {clockOutAt}=${q(sessionFields.clockOutAt)})`;
     const sessionUpsert = await upsertByFormula(base, SESSIONS_TABLE, sessKey, sessionFields);
 
     const reportFields: Record<string, any> = {
       date: dateStr, year, month,
-      username, userId,
+      username,
+      userId: sessionUserId,
       sitename: siteName,
       machinename: machineName,
       workdescription: workDescription,
@@ -194,12 +290,14 @@ export async function sessionWorkerCreateFromOutLog(
       hours,
     };
     const repKey =
-      `AND({date}=${q(dateStr)}, {userId}=${q(userId)}, {sitename}=${q(siteName)}, {workdescription}=${q(workDescription)}, {clockInAt}=${q(reportFields.clockInAt)}, {clockOutAt}=${q(reportFields.clockOutAt)})`;
+      `AND({date}=${q(dateStr)}, {userId}=${q(sessionUserId)}, {sitename}=${q(siteName)}, {workdescription}=${q(workDescription)}, {clockInAt}=${q(reportFields.clockInAt)}, {clockOutAt}=${q(reportFields.clockOutAt)})`;
     const reportUpsert = await upsertByFormula(base, REPORT_INDEX_TABLE, repKey, reportFields);
 
     console.info('[sessionWorker] ensured Session & ReportIndex', {
       outLogId,
-      userKey,
+      identity: { out: outIdentity, in: inIdentity },
+      sessionUserId,
+      sessionUsedRecIdFallback: !sessionEmployeeCode && Boolean(sessionUserRecId),
       hours,
       date: dateStr,
       sessionAction: sessionUpsert.action,

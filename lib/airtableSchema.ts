@@ -2,6 +2,7 @@ export const LOGS_ALLOWED_FIELDS = [
   'timestamp',
   'date',
   'user',
+  'userId',
   'machine',
   'siteName',
   'lat',
