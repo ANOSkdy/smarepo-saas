@@ -39,35 +39,52 @@ async function findRecordById(base: any, tableName: string, id: string) {
 async function selectAll(base: any, tableName: string, params: any) {
   return base(tableName).select(params).all();
 }
-async function upsertByFormula(base: any, tableName: string, filterByFormula: string, fields: Record<string, any>) {
+type UpsertResult = { action: 'created' | 'skipped'; recordId?: string };
+
+async function upsertByFormula(
+  base: any,
+  tableName: string,
+  filterByFormula: string,
+  fields: Record<string, any>,
+): Promise<UpsertResult> {
   const exists = await selectAll(base, tableName, { filterByFormula, maxRecords: 1 });
   if (exists.length === 0) {
-    await base(tableName).create([{ fields }], { typecast: true });
-    return 'created';
+    const created = await base(tableName).create([{ fields }], { typecast: true });
+    const record = Array.isArray(created) ? created[0] : null;
+    return { action: 'created', recordId: record?.id };
   }
-  return 'skipped';
+  const record = exists[0] ?? null;
+  return { action: 'skipped', recordId: record?.id };
 }
+
+export type SessionWorkerResult =
+  | { ok: true; sessionId?: string; reportId?: string; hours: number; date: string }
+  | { ok: false; reason: string };
 
 /**
  * OUTログIDを受け取り、対応する IN を突合して Session と ReportIndex を作成/確定する。
  * 失敗しても throw はせず、/api/stamp の応答遅延を避ける設計。
  */
-export async function createSessionAndIndexFromOutLog(outLogId: string) {
+export async function sessionWorkerCreateFromOutLog(
+  outLogId: string,
+): Promise<SessionWorkerResult> {
   const base = await getAirtableBase();
-  if (!base) return;
+  if (!base) {
+    return { ok: false, reason: 'NO_BASE' };
+  }
   try {
     const out = await findRecordById(base, LOGS_TABLE, outLogId);
     const outType = String(out.get('type') ?? '');
     if (outType !== 'OUT') {
       console.info('[sessionWorker] skip: not OUT', { outLogId, type: outType });
-      return;
+      return { ok: false, reason: 'NOT_OUT' };
     }
 
     const outTsStr = String(out.get('timestamp') ?? '');
     const outTs = new Date(outTsStr);
     if (Number.isNaN(outTs.getTime())) {
       console.warn('[sessionWorker] skip: invalid OUT timestamp', { outLogId, outTsStr });
-      return;
+      return { ok: false, reason: 'INVALID_OUT_TIMESTAMP' };
     }
     const outTsIso = toIso(outTs);
     const outDateJst = toJstParts(outTs).dateStr;
@@ -80,10 +97,15 @@ export async function createSessionAndIndexFromOutLog(outLogId: string) {
     const username = String(out.get('userName') ?? out.get('username') ?? '');
     const machineName = String(out.get('machineName') ?? out.get('machineId') ?? '');
 
-    const baseConds = [`{type}='IN'`];
-    if (userLink) baseConds.push(`FIND(${q(userLink)}, ARRAYJOIN({user}))`);
-    baseConds.push(`{timestamp} < ${q(outTsIso)}`);
-    const filterByFormula = `AND(${baseConds.join(',')})`;
+    const isoOut = outTsIso;
+    const filterParts = [
+      `{type}='IN'`,
+      `IS_BEFORE({timestamp}, DATETIME_PARSE(${q(isoOut)}))`,
+    ];
+    if (userLink) {
+      filterParts.splice(1, 0, `FIND(${q(userLink)}, ARRAYJOIN({user}))`);
+    }
+    const filterByFormula = `AND(${filterParts.join(',')})`;
 
     const candidates = await selectAll(base, LOGS_TABLE, {
       filterByFormula,
@@ -111,11 +133,15 @@ export async function createSessionAndIndexFromOutLog(outLogId: string) {
       const twelveHoursAgoIso = toIso(
         new Date(outTs.getTime() - 12 * 60 * 60 * 1000),
       );
-      const fallbackConds = [`{type}='IN'`];
-      if (userLink) fallbackConds.push(`FIND(${q(userLink)}, ARRAYJOIN({user}))`);
-      fallbackConds.push(`{timestamp} > ${q(twelveHoursAgoIso)}`);
-      fallbackConds.push(`{timestamp} < ${q(outTsIso)}`);
-      const fallbackFormula = `AND(${fallbackConds.join(',')})`;
+      const fallbackParts = [
+        `{type}='IN'`,
+        `IS_AFTER({timestamp}, DATETIME_PARSE(${q(twelveHoursAgoIso)}))`,
+        `IS_BEFORE({timestamp}, DATETIME_PARSE(${q(isoOut)}))`,
+      ];
+      if (userLink) {
+        fallbackParts.splice(1, 0, `FIND(${q(userLink)}, ARRAYJOIN({user}))`);
+      }
+      const fallbackFormula = `AND(${fallbackParts.join(',')})`;
       const fallback = await selectAll(base, LOGS_TABLE, {
         filterByFormula: fallbackFormula,
         sort: [{ field: 'timestamp', direction: 'desc' }],
@@ -132,9 +158,8 @@ export async function createSessionAndIndexFromOutLog(outLogId: string) {
       console.info('[sessionWorker] skip: no IN found', {
         outLogId,
         reason: 'NO_IN',
-        baseConds,
       });
-      return;
+      return { ok: false, reason: 'NO_IN' };
     }
 
     const inTsStr = String(inRec.get('timestamp') ?? '');
@@ -153,7 +178,7 @@ export async function createSessionAndIndexFromOutLog(outLogId: string) {
     };
     const sessKey =
       `AND({userId}=${q(userId)}, {clockInAt}=${q(sessionFields.clockInAt)}, {clockOutAt}=${q(sessionFields.clockOutAt)})`;
-    await upsertByFormula(base, SESSIONS_TABLE, sessKey, sessionFields);
+    const sessionUpsert = await upsertByFormula(base, SESSIONS_TABLE, sessKey, sessionFields);
 
     const reportFields: Record<string, any> = {
       date: dateStr, year, month,
@@ -167,10 +192,28 @@ export async function createSessionAndIndexFromOutLog(outLogId: string) {
     };
     const repKey =
       `AND({date}=${q(dateStr)}, {userId}=${q(userId)}, {sitename}=${q(siteName)}, {workdescription}=${q(workDescription)}, {clockInAt}=${q(reportFields.clockInAt)}, {clockOutAt}=${q(reportFields.clockOutAt)})`;
-    await upsertByFormula(base, REPORT_INDEX_TABLE, repKey, reportFields);
+    const reportUpsert = await upsertByFormula(base, REPORT_INDEX_TABLE, repKey, reportFields);
 
-    console.info('[sessionWorker] ensured Session & ReportIndex', { outLogId, hours, date: dateStr });
+    console.info('[sessionWorker] ensured Session & ReportIndex', {
+      outLogId,
+      hours,
+      date: dateStr,
+      sessionAction: sessionUpsert.action,
+      reportAction: reportUpsert.action,
+    });
+    return {
+      ok: true,
+      sessionId: sessionUpsert.recordId,
+      reportId: reportUpsert.recordId,
+      hours,
+      date: dateStr,
+    };
   } catch (err: any) {
     console.error('[sessionWorker] failed', { outLogId, error: err?.message || String(err) });
+    return { ok: false, reason: 'ERROR' };
   }
+}
+
+export async function createSessionAndIndexFromOutLog(outLogId: string): Promise<void> {
+  await sessionWorkerCreateFromOutLog(outLogId);
 }
