@@ -89,22 +89,25 @@ export async function sessionWorkerCreateFromOutLog(
     const outTsIso = toIso(outTs);
     const outDateJst = toJstParts(outTs).dateStr;
 
-    const userLink = (out.get('user') as string[] | undefined)?.[0] ?? '';
     const siteName = String(out.get('siteName') ?? '');
     const workDescription = String(out.get('workDescription') ?? '');
 
+    // Logs.userId は数値文字列（例: "115"）として格納されるため、そのまま突合キーに使う
     const userId = String(out.get('userId') ?? '');
+    const userKey = userId.trim();
+    if (!userKey) {
+      console.info('[sessionWorker] skip: missing userId on OUT log', { outLogId });
+      return { ok: false, reason: 'MISSING_USERID' };
+    }
     const username = String(out.get('userName') ?? out.get('username') ?? '');
     const machineName = String(out.get('machineName') ?? out.get('machineId') ?? '');
 
     const isoOut = outTsIso;
     const filterParts = [
       `{type}='IN'`,
+      `{userId}=${q(userKey)}`,
       `IS_BEFORE({timestamp}, DATETIME_PARSE(${q(isoOut)}))`,
     ];
-    if (userLink) {
-      filterParts.splice(1, 0, `FIND(${q(userLink)}, ARRAYJOIN({user}))`);
-    }
     const filterByFormula = `AND(${filterParts.join(',')})`;
 
     const candidates = await selectAll(base, LOGS_TABLE, {
@@ -113,11 +116,44 @@ export async function sessionWorkerCreateFromOutLog(
       maxRecords: 5,
       pageSize: 5,
     });
+    console.info('[sessionWorker] primarySearch', { outLogId, userKey, hits: candidates.length });
 
-    const validCandidates = candidates.filter((r: any) => {
+    let validCandidates = candidates.filter((r: any) => {
       const ts = new Date(String(r.get('timestamp') ?? ''));
       return !Number.isNaN(ts.getTime()) && ts.getTime() <= outTs.getTime();
     });
+
+    if (validCandidates.length === 0) {
+      const twelveHoursAgoIso = toIso(
+        new Date(outTs.getTime() - 12 * 60 * 60 * 1000),
+      );
+      const fallbackParts = [
+        `{type}='IN'`,
+        `{userId}=${q(userKey)}`,
+        `IS_AFTER({timestamp}, DATETIME_PARSE(${q(twelveHoursAgoIso)}))`,
+        `IS_BEFORE({timestamp}, DATETIME_PARSE(${q(isoOut)}))`,
+      ];
+      const fallbackFormula = `AND(${fallbackParts.join(',')})`;
+      const fallback = await selectAll(base, LOGS_TABLE, {
+        filterByFormula: fallbackFormula,
+        sort: [{ field: 'timestamp', direction: 'desc' }],
+        maxRecords: 1,
+        pageSize: 1,
+      });
+      console.info('[sessionWorker] fallbackSearch', { outLogId, userKey, hits: fallback.length });
+      validCandidates = fallback.filter((r: any) => {
+        const ts = new Date(String(r.get('timestamp') ?? ''));
+        return !Number.isNaN(ts.getTime()) && ts.getTime() <= outTs.getTime();
+      });
+      if (validCandidates.length === 0) {
+        console.info('[sessionWorker] skip: no IN found', {
+          outLogId,
+          userKey,
+          reason: 'NO_IN',
+        });
+        return { ok: false, reason: 'NO_IN' };
+      }
+    }
 
     let inRec = validCandidates.find((r: any) => {
       const ts = new Date(String(r.get('timestamp') ?? ''));
@@ -127,39 +163,6 @@ export async function sessionWorkerCreateFromOutLog(
 
     if (!inRec) {
       inRec = validCandidates[0];
-    }
-
-    if (!inRec) {
-      const twelveHoursAgoIso = toIso(
-        new Date(outTs.getTime() - 12 * 60 * 60 * 1000),
-      );
-      const fallbackParts = [
-        `{type}='IN'`,
-        `IS_AFTER({timestamp}, DATETIME_PARSE(${q(twelveHoursAgoIso)}))`,
-        `IS_BEFORE({timestamp}, DATETIME_PARSE(${q(isoOut)}))`,
-      ];
-      if (userLink) {
-        fallbackParts.splice(1, 0, `FIND(${q(userLink)}, ARRAYJOIN({user}))`);
-      }
-      const fallbackFormula = `AND(${fallbackParts.join(',')})`;
-      const fallback = await selectAll(base, LOGS_TABLE, {
-        filterByFormula: fallbackFormula,
-        sort: [{ field: 'timestamp', direction: 'desc' }],
-        maxRecords: 1,
-        pageSize: 1,
-      });
-      inRec = fallback.find((r: any) => {
-        const ts = new Date(String(r.get('timestamp') ?? ''));
-        return !Number.isNaN(ts.getTime()) && ts.getTime() <= outTs.getTime();
-      });
-    }
-
-    if (!inRec) {
-      console.info('[sessionWorker] skip: no IN found', {
-        outLogId,
-        reason: 'NO_IN',
-      });
-      return { ok: false, reason: 'NO_IN' };
     }
 
     const inTsStr = String(inRec.get('timestamp') ?? '');
@@ -196,6 +199,7 @@ export async function sessionWorkerCreateFromOutLog(
 
     console.info('[sessionWorker] ensured Session & ReportIndex', {
       outLogId,
+      userKey,
       hours,
       date: dateStr,
       sessionAction: sessionUpsert.action,
