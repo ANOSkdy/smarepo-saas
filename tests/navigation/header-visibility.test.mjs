@@ -15,13 +15,11 @@ if (existsSync(outDir)) {
 }
 
 execSync(
-  'pnpm exec tsc components/HeaderNav.tsx app/(protected)/_components/SubHeaderGate.tsx app/(protected)/dashboard/layout.tsx --module nodenext --target es2020 --moduleResolution nodenext --esModuleInterop --jsx react-jsx --outDir tests/dist-nav',
+  'pnpm exec tsc components/NavTabs.tsx app/(protected)/_components/SubHeaderGate.tsx app/(protected)/dashboard/layout.tsx --module nodenext --target es2020 --moduleResolution nodenext --esModuleInterop --jsx react-jsx --outDir tests/dist-nav',
   { cwd: projectRoot, stdio: 'inherit' },
 );
 
-const { shouldHideDashboardLink, shouldHideNfcLink, resolveNfcHref } = await import(
-  new URL('../dist-nav/components/HeaderNav.js', import.meta.url),
-);
+const { NAV_TABS, isActivePath } = await import(new URL('../dist-nav/components/NavTabs.js', import.meta.url));
 const { shouldHideSubHeader } = await import(
   new URL('../dist-nav/app/(protected)/_components/SubHeaderGate.js', import.meta.url),
 );
@@ -29,29 +27,19 @@ const { resolveDashboardUserName } = await import(
   new URL('../dist-nav/app/(protected)/dashboard/layout.js', import.meta.url),
 );
 
-test('shouldHideNfcLink hides link on /nfc', () => {
-  assert.equal(shouldHideNfcLink('/nfc'), true);
-  assert.equal(shouldHideNfcLink('/nfc/settings'), true);
+test('nav tabs expose calendar, work report, and NFC routes', () => {
+  assert.equal(Array.isArray(NAV_TABS), true);
+  const hrefs = NAV_TABS.map((tab) => tab.href);
+  assert.ok(hrefs.includes('/calendar/month'));
+  assert.ok(hrefs.includes('/reports/work'));
+  assert.ok(hrefs.includes('/nfc?machineId=1001'));
 });
 
-test('shouldHideNfcLink keeps link on other paths', () => {
-  assert.equal(shouldHideNfcLink('/dashboard'), false);
-  assert.equal(shouldHideNfcLink('/'), false);
-  assert.equal(shouldHideNfcLink(null), false);
-});
-
-test('shouldHideDashboardLink hides link on dashboard routes', () => {
-  assert.equal(shouldHideDashboardLink('/dashboard'), true);
-  assert.equal(shouldHideDashboardLink('/dashboard/reports'), true);
-  assert.equal(shouldHideDashboardLink('/settings'), false);
-  assert.equal(shouldHideDashboardLink(undefined), false);
-});
-
-test('resolveNfcHref appends machine id when on dashboard', () => {
-  assert.equal(resolveNfcHref('/dashboard'), '/nfc?machineid=1001');
-  assert.equal(resolveNfcHref('/dashboard/summary'), '/nfc?machineid=1001');
-  assert.equal(resolveNfcHref('/settings'), '/nfc');
-  assert.equal(resolveNfcHref(undefined), '/nfc');
+test('isActivePath matches base route segments', () => {
+  assert.equal(isActivePath('/reports/work', '/reports/work'), true);
+  assert.equal(isActivePath('/reports/work/detail', '/reports/work'), true);
+  assert.equal(isActivePath('/calendar/month', '/reports/work'), false);
+  assert.equal(isActivePath(null, '/reports/work'), false);
 });
 
 test('shouldHideSubHeader hides for dashboard and nfc routes', () => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type DayRow = {
   day: string;
@@ -52,6 +52,7 @@ export default function WorkReportPage() {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const tableRef = useRef<HTMLDivElement | null>(null);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -88,6 +89,82 @@ export default function WorkReportPage() {
 
   const csvContent = useMemo(() => (data ? toCsv(data.result) : ''), [data]);
   const hasData = data && data.result.length > 0;
+
+  const handlePdfDownload = useCallback(async () => {
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+
+      const target = tableRef.current;
+      if (!target) {
+        throw new Error('描画対象が見つかりません');
+      }
+
+      const canvas = await html2canvas(target, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+      });
+
+      const imageData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const availableWidth = pageWidth - margin * 2;
+      const renderedHeight = (canvas.height * availableWidth) / canvas.width;
+
+      if (renderedHeight <= pageHeight - margin * 2) {
+        pdf.addImage(imageData, 'PNG', margin, margin, availableWidth, renderedHeight, undefined, 'FAST');
+      } else {
+        let offsetY = 0;
+        const sliceHeight = Math.floor(((pageHeight - margin * 2) * canvas.width) / availableWidth);
+
+        while (offsetY < canvas.height) {
+          const sliceCanvas = document.createElement('canvas');
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = Math.min(sliceHeight, canvas.height - offsetY);
+          const context = sliceCanvas.getContext('2d');
+          if (!context) {
+            throw new Error('キャンバスの初期化に失敗しました');
+          }
+          context.drawImage(
+            canvas,
+            0,
+            offsetY,
+            canvas.width,
+            sliceCanvas.height,
+            0,
+            0,
+            sliceCanvas.width,
+            sliceCanvas.height,
+          );
+          const partialImage = sliceCanvas.toDataURL('image/png');
+          if (offsetY > 0) {
+            pdf.addPage();
+          }
+          pdf.addImage(
+            partialImage,
+            'PNG',
+            margin,
+            margin,
+            availableWidth,
+            (sliceCanvas.height * availableWidth) / sliceCanvas.width,
+            undefined,
+            'FAST',
+          );
+          offsetY += sliceHeight;
+        }
+      }
+
+      pdf.save(`work_${year}-${String(month).padStart(2, '0')}.pdf`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '不明なエラーが発生しました';
+      alert(`PDF出力に失敗しました\n${message}`);
+    }
+  }, [month, year]);
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
@@ -175,19 +252,28 @@ export default function WorkReportPage() {
           {loading ? '取得中…' : '再取得'}
         </button>
         {hasData && (
-          <a
-            href={`data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`}
-            download={`work_${year}-${String(month).padStart(2, '0')}.csv`}
-            className="rounded border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
-          >
-            CSVダウンロード
-          </a>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handlePdfDownload}
+              className="rounded border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
+            >
+              PDFダウンロード
+            </button>
+            <a
+              href={`data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`}
+              download={`work_${year}-${String(month).padStart(2, '0')}.csv`}
+              className="rounded border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
+            >
+              CSVダウンロード
+            </a>
+          </div>
         )}
       </section>
 
       {error && <p className="text-sm text-destructive">エラー: {error}</p>}
 
-      <section className="overflow-x-auto rounded border border-border bg-card">
+      <section className="overflow-x-auto rounded border border-border bg-card" ref={tableRef}>
         <table className="min-w-[880px] w-full text-sm">
           <thead className="bg-muted/50">
             <tr>
