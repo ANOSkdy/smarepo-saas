@@ -267,7 +267,7 @@ export default function StampCard({
   const [pendingStamp, setPendingStamp] = useState<{ type: 'IN' | 'OUT'; workDescription: string } | null>(null);
 
   const searchParams = useSearchParams();
-  const machineId = searchParams.get('machineid');
+  const machineId = searchParams.get('machineId') ?? searchParams.get('machineid');
 
   useEffect(() => {
     if (stampType === 'IN') {

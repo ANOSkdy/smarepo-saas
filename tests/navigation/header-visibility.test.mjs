@@ -30,7 +30,7 @@ const { resolveDashboardUserName } = await import(
 test('nav tabs expose calendar, work report, and NFC routes', () => {
   assert.equal(Array.isArray(NAV_TABS), true);
   const hrefs = NAV_TABS.map((tab) => tab.href);
-  assert.ok(hrefs.includes('/calendar/month'));
+  assert.ok(hrefs.includes('/dashboard'));
   assert.ok(hrefs.includes('/reports/work'));
   assert.ok(hrefs.includes('/nfc?machineId=1001'));
 });
@@ -38,7 +38,8 @@ test('nav tabs expose calendar, work report, and NFC routes', () => {
 test('isActivePath matches base route segments', () => {
   assert.equal(isActivePath('/reports/work', '/reports/work'), true);
   assert.equal(isActivePath('/reports/work/detail', '/reports/work'), true);
-  assert.equal(isActivePath('/calendar/month', '/reports/work'), false);
+  assert.equal(isActivePath('/dashboard', '/reports/work'), false);
+  assert.equal(isActivePath('/dashboard/insights', '/dashboard'), true);
   assert.equal(isActivePath(null, '/reports/work'), false);
 });
 

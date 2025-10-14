@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import StampCard from '@/components/StampCard';
-import { getTodayLogs } from '@/lib/airtable';
+import { getFirstMachine, getMachineById, getTodayLogs } from '@/lib/airtable';
 import { ROUTES } from '@/src/constants/routes';
 
 // ページが動的にレンダリングされるように設定
@@ -18,13 +18,63 @@ export default async function NFCPage({ searchParams }: NFCPageProps) {
     redirect(ROUTES.LOGIN);
   }
 
-  const machineIdParam = searchParams.machineid;
-  if (typeof machineIdParam !== 'string') {
+  const requestedMachineId =
+    typeof searchParams.machineId === 'string'
+      ? searchParams.machineId
+      : typeof searchParams.machineid === 'string'
+        ? searchParams.machineid
+        : null;
+
+  const defaultMachineId = (process.env.NEXT_PUBLIC_DEFAULT_MACHINE_ID || '1001').trim();
+
+  const candidates = [requestedMachineId, defaultMachineId].filter(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0,
+  );
+
+  let resolvedMachineId: string | null = null;
+  let machineRecord: NonNullable<Awaited<ReturnType<typeof getMachineById>>> | null = null;
+
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const normalized = candidate.trim();
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    try {
+      const record = await getMachineById(normalized);
+      if (record) {
+        resolvedMachineId = (record.fields.machineid || normalized).trim();
+        machineRecord = record;
+        break;
+      }
+    } catch (error) {
+      console.warn('Failed to validate machineId candidate', { candidate: normalized, error });
+    }
+  }
+
+  if (!machineRecord) {
+    try {
+      const firstMachine = await getFirstMachine();
+      if (firstMachine) {
+        resolvedMachineId = (firstMachine.fields.machineid || '').trim() || null;
+        machineRecord = firstMachine;
+      }
+    } catch (error) {
+      console.error('Failed to fetch fallback machine', error);
+    }
+  }
+
+  if (!resolvedMachineId || !machineRecord) {
     return (
       <div role="alert" className="rounded-lg border border-brand-border bg-brand-surface-alt p-4 text-brand-text">
-        無効な機械IDです。
+        機械情報を取得できませんでした。時間をおいて再度お試しください。
       </div>
     );
+  }
+
+  if (requestedMachineId?.trim() !== resolvedMachineId) {
+    redirect(`/nfc?machineId=${resolvedMachineId}`);
   }
 
   try {
@@ -35,7 +85,7 @@ export default async function NFCPage({ searchParams }: NFCPageProps) {
     // 最後のログが 'IN' なら退勤画面、そうでなければ出勤画面
     const initialStampType = lastLog?.fields.type === 'IN' ? 'OUT' : 'IN';
     const initialWorkDescription = lastLog?.fields.workDescription ?? '';
-    const machineName = machineIdParam.trim().length > 0 ? machineIdParam.trim() : '未登録';
+    const machineName = machineRecord.fields.name?.trim() || resolvedMachineId;
 
     return (
       <section className="flex flex-1 flex-col gap-4">
