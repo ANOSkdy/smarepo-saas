@@ -1,61 +1,10 @@
 import { ReportsContent, type ReportRecord } from './components/ResultsTable';
 import type { FiltersValue } from './components/Filters';
-import { listRecords, type AirtableRecord } from '../../src/lib/airtable/client';
+import { buildSessionReport, getLogsBetween } from '@/lib/airtable/logs';
 
-const REPORT_INDEX_TABLE = process.env.AIRTABLE_TABLE_REPORT_INDEX || 'ReportIndex';
 const JST_OFFSET_MINUTES = 9 * 60;
 
 export const revalidate = 0;
-
-type ReportIndexFields = {
-  date?: string;
-  username?: string;
-  sitename?: string;
-  machinename?: string;
-  workdescription?: string;
-  hours?: number;
-};
-
-type CompletedReportIndexFields = ReportIndexFields & {
-  date: string;
-  workdescription: string;
-  hours: number;
-};
-
-function isCompletedRecord(
-  record: AirtableRecord<ReportIndexFields>
-): record is AirtableRecord<CompletedReportIndexFields> {
-  const fields = record.fields;
-  return (
-    typeof fields.date === 'string' &&
-    typeof fields.workdescription === 'string' &&
-    typeof fields.hours === 'number'
-  );
-}
-
-function escapeFormulaValue(value: string): string {
-  return value.replace(/'/g, "\\'");
-}
-
-function buildFilterFormula(filters: FiltersValue): string {
-  const clauses = [`({year}=${filters.year})`, `({month}=${filters.month})`];
-  if (filters.sitename) {
-    clauses.push(
-      `SEARCH(LOWER('${escapeFormulaValue(filters.sitename)}'), LOWER({sitename}&''))`
-    );
-  }
-  if (filters.username) {
-    clauses.push(
-      `SEARCH(LOWER('${escapeFormulaValue(filters.username)}'), LOWER({username}&''))`
-    );
-  }
-  if (filters.machinename) {
-    clauses.push(
-      `SEARCH(LOWER('${escapeFormulaValue(filters.machinename)}'), LOWER({machinename}&''))`
-    );
-  }
-  return `AND(${clauses.join(',')})`;
-}
 
 function getCurrentJstYearMonth(): { year: number; month: number } {
   const now = new Date();
@@ -64,27 +13,49 @@ function getCurrentJstYearMonth(): { year: number; month: number } {
   return { year: jst.getUTCFullYear(), month: jst.getUTCMonth() + 1 };
 }
 
+function resolveMonthRange(year: number, month: number) {
+  const startUtc = new Date(Date.UTC(year, month - 1, 1, -9, 0, 0));
+  const nextMonth = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
+  const endUtc = new Date(Date.UTC(nextMonth.year, nextMonth.month - 1, 1, -9, 0, 0));
+  return { from: startUtc, to: endUtc };
+}
+
+function matchesFilter(value: string | null, query?: string): boolean {
+  if (!query) {
+    return true;
+  }
+  if (!value) {
+    return false;
+  }
+  return value.toLocaleLowerCase('ja').includes(query.toLocaleLowerCase('ja'));
+}
+
 async function fetchInitialRecords(filters: FiltersValue): Promise<ReportRecord[]> {
   try {
-    const records = await listRecords<ReportIndexFields>({
-      table: REPORT_INDEX_TABLE,
-      filterByFormula: buildFilterFormula(filters),
-      fields: ['date', 'username', 'sitename', 'machinename', 'workdescription', 'hours'],
-      sort: [
-        { field: 'sitename', direction: 'asc' },
-        { field: 'username', direction: 'asc' },
-        { field: 'machinename', direction: 'asc' },
-        { field: 'date', direction: 'asc' },
-      ],
+    const range = resolveMonthRange(filters.year, filters.month);
+    const logs = await getLogsBetween(range);
+    const rows = buildSessionReport(logs).filter((row) => {
+      if (!matchesFilter(row.siteName ?? null, filters.sitename)) {
+        return false;
+      }
+      if (!matchesFilter(row.userName, filters.username)) {
+        return false;
+      }
+      const machineLabel = row.machineName ?? row.machineId ?? null;
+      if (!matchesFilter(machineLabel, filters.machinename)) {
+        return false;
+      }
+      return true;
     });
-    return records.filter(isCompletedRecord).map((record) => ({
-      id: record.id,
-      date: record.fields.date,
-      username: record.fields.username ?? '',
-      sitename: record.fields.sitename ?? '',
-      machinename: record.fields.machinename ?? '',
-      workdescription: record.fields.workdescription ?? '',
-      hours: record.fields.hours,
+
+    return rows.map((row) => ({
+      id: row.id,
+      date: row.date,
+      username: row.userName,
+      sitename: row.siteName ?? '',
+      machinename: row.machineName ?? row.machineId ?? '',
+      workdescription: row.workDescription ?? '',
+      hours: row.hours,
     }));
   } catch (error) {
     console.error('Failed to load initial report records', error);

@@ -111,53 +111,9 @@ export async function POST(req: NextRequest) {
     const created = createdRecords[0];
 
     if (created) {
-      const outLogId = created.id;
-      let triggerUrl: string | undefined;
-      if (type === 'OUT') {
-        try {
-          const headers = req.headers;
-          const protocol = headers.get('x-forwarded-proto') ?? 'https';
-          const host =
-            headers.get('x-forwarded-host') ?? headers.get('host') ?? '';
-          if (!host) {
-            console.warn('[auto-session-trigger:error]', {
-              outLogId,
-              reason: 'MISSING_HOST_HEADER',
-            });
-          } else {
-            const baseUrl = `${protocol}://${host}`;
-            triggerUrl = `${baseUrl}/api/out-to-session/from-logs`;
-
-            console.info('[auto-session-trigger:start]', {
-              url: triggerUrl,
-              outLogId,
-            });
-            const response = await fetch(triggerUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ outLogId }),
-            });
-            const bodyText = await response.text().catch(() => '');
-            console.info('[auto-session-trigger:done]', {
-              outLogId,
-              status: response.status,
-              body: bodyText.slice(0, 200),
-            });
-          }
-        } catch (error) {
-          console.warn('[auto-session-trigger:error]', {
-            outLogId,
-            triggerUrl,
-            error:
-              error instanceof Error
-                ? { name: error.name, message: error.message }
-                : error,
-          });
-        }
-      }
       logger.info('stamp record created', {
         userId: session.user.id,
-        recordId: outLogId,
+        recordId: created.id,
         type,
       });
     }
