@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
 
 export default auth((req) => {
-  const url = req.nextUrl.clone();
+  const request = req as unknown as NextRequest;
+  const url = request.nextUrl.clone();
   if (url.pathname.startsWith('/nfc')) {
     if (!url.searchParams.has('machineId')) {
       url.searchParams.set('machineId', '1001');

@@ -47,9 +47,13 @@ export default function WorkReportPrintPage({ searchParams }: Props) {
   const query = useMemo(() => toQueryString(searchParams), [searchParams]);
   const [data, setData] = useState<ApiResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [autoPrintReady, setAutoPrintReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    setData(null);
+    setError(null);
+    setAutoPrintReady(false);
     const load = async () => {
       try {
         const response = await fetch(`/api/reports/work?${query}`);
@@ -59,9 +63,7 @@ export default function WorkReportPrintPage({ searchParams }: Props) {
         }
         if (!cancelled) {
           setData(json);
-          setTimeout(() => {
-            window.print();
-          }, 300);
+          setAutoPrintReady(true);
         }
       } catch (err) {
         if (!cancelled) {
@@ -76,12 +78,40 @@ export default function WorkReportPrintPage({ searchParams }: Props) {
     };
   }, [query]);
 
+  useEffect(() => {
+    if (!autoPrintReady) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      window.print();
+    }, 300);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [autoPrintReady]);
+
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-6 print:max-w-none print:p-4">
       <NavTabs />
       <header className="space-y-2 print:hidden">
         <h1 className="text-2xl font-bold text-foreground">月次稼働集計（印刷用）</h1>
-        <p className="text-sm text-muted-foreground">ブラウザの印刷（PDF出力）機能をご利用ください。</p>
+        <p className="text-sm text-muted-foreground">
+          ブラウザの印刷（PDF出力）機能をご利用ください。自動的にダイアログが開かない場合は下のボタンを使用できます。
+        </p>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="rounded border border-border px-3 py-1 font-medium text-foreground transition-colors hover:bg-muted"
+          >
+            印刷ダイアログを開く
+          </button>
+          {autoPrintReady ? (
+            <span className="text-xs text-muted-foreground">最新データを読み込みました。</span>
+          ) : (
+            <span className="text-xs text-muted-foreground">データ取得中...</span>
+          )}
+        </div>
       </header>
       {error && <p className="text-sm text-destructive">エラー: {error}</p>}
       {!error && !data && <p className="text-sm text-muted-foreground">読み込み中...</p>}

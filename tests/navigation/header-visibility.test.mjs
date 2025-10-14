@@ -47,11 +47,11 @@ test('shouldHideDashboardLink hides link on dashboard routes', () => {
   assert.equal(shouldHideDashboardLink(undefined), false);
 });
 
-test('resolveNfcHref appends machine id when on dashboard', () => {
-  assert.equal(resolveNfcHref('/dashboard'), '/nfc?machineid=1001');
-  assert.equal(resolveNfcHref('/dashboard/summary'), '/nfc?machineid=1001');
-  assert.equal(resolveNfcHref('/settings'), '/nfc');
-  assert.equal(resolveNfcHref(undefined), '/nfc');
+test('resolveNfcHref always appends default machine id', () => {
+  assert.equal(resolveNfcHref('/dashboard'), '/nfc?machineId=1001');
+  assert.equal(resolveNfcHref('/dashboard/summary'), '/nfc?machineId=1001');
+  assert.equal(resolveNfcHref('/settings'), '/nfc?machineId=1001');
+  assert.equal(resolveNfcHref(undefined), '/nfc?machineId=1001');
 });
 
 test('shouldHideSubHeader hides for dashboard and nfc routes', () => {

@@ -18,7 +18,10 @@ export function shouldHideNfcLink(pathname: string | null | undefined): boolean 
 }
 
 export function resolveNfcHref(pathname: string | null | undefined): string {
-  return shouldHideDashboardLink(pathname) ? '/nfc?machineid=1001' : '/nfc';
+  void pathname;
+  const base = '/nfc';
+  const query = '?machineId=1001';
+  return `${base}${query}`;
 }
 
 export default function HeaderNav() {
