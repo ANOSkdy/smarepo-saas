@@ -1,6 +1,7 @@
 import { Record as AirtableRecord } from 'airtable';
 import { logsTable } from '@/lib/airtable';
 import type { LogFields } from '@/types';
+import { resolveUserIdentity } from '@/lib/services/userIdentity';
 import { getUsersMap } from './users';
 import { AIRTABLE_PAGE_SIZE, JST_OFFSET, LOG_FIELDS } from './schema';
 
@@ -295,9 +296,53 @@ function roundHours(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function createOpenSession(source: NormalizedLog): SessionDetail {
+type UserIdentity = ReturnType<typeof resolveUserIdentity>;
+
+function toLogRecFromNormalized(log: NormalizedLog) {
   return {
-    userId: source.userId,
+    id: log.id,
+    fields: (log.rawFields ?? {}) as Record<string, unknown>,
+  };
+}
+
+function ensureIdentity(
+  log: NormalizedLog,
+  cache: Map<string, UserIdentity>,
+): UserIdentity {
+  const cached = cache.get(log.id);
+  if (cached) {
+    return cached;
+  }
+  const identity = resolveUserIdentity(toLogRecFromNormalized(log));
+  cache.set(log.id, identity);
+  return identity;
+}
+
+function computePairingKey(log: NormalizedLog, identity: UserIdentity): string {
+  const fallbackLookup = log.userLookupKeys.find((value) => value);
+  const base =
+    identity.employeeCode ??
+    identity.userRecId ??
+    log.userId ??
+    fallbackLookup ??
+    log.userName ??
+    'unknown-user';
+  const site = log.siteId ?? log.siteName ?? 'site-unknown';
+  const machine = log.machineId ?? 'machine-unknown';
+  return [base, site, machine].join('::');
+}
+
+function createOpenSession(source: NormalizedLog, identity: UserIdentity): SessionDetail {
+  const fallbackLookup = source.userLookupKeys.find((value) => value);
+  const resolvedUserId =
+    identity.employeeCode ??
+    identity.userRecId ??
+    source.userId ??
+    fallbackLookup ??
+    null;
+
+  return {
+    userId: resolvedUserId,
     startMs: source.timestampMs,
     startLogId: source.id,
     userName: source.userName ?? '未登録ユーザー',
@@ -310,54 +355,118 @@ function createOpenSession(source: NormalizedLog): SessionDetail {
 
 function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
   const sorted = [...logs].sort((a, b) => a.timestampMs - b.timestampMs);
-  const openSessions = new Map<string, NormalizedLog | null>();
+  const identityCache = new Map<string, UserIdentity>();
+  const stacks = new Map<string, NormalizedLog[]>();
   const sessions: SessionDetail[] = [];
 
+  const pushStack = (key: string, log: NormalizedLog) => {
+    const stack = stacks.get(key);
+    if (stack) {
+      stack.push(log);
+      return;
+    }
+    stacks.set(key, [log]);
+  };
+
+  const popStack = (key: string, outLog: NormalizedLog): NormalizedLog | null => {
+    const stack = stacks.get(key);
+    if (!stack || stack.length === 0) {
+      return null;
+    }
+    while (stack.length > 0) {
+      const candidate = stack.pop()!;
+      if (stack.length === 0) {
+        stacks.delete(key);
+      }
+      if (candidate.timestampMs < outLog.timestampMs) {
+        return candidate;
+      }
+      console.warn('[calendar][pairing] discard non chronological IN punch', {
+        key,
+        inLogId: candidate.id,
+        outLogId: outLog.id,
+      });
+    }
+    return null;
+  };
+
   for (const log of sorted) {
-    const userKey = log.userId ?? log.userName ?? 'unknown-user';
-    const currentOpen = openSessions.get(userKey) ?? null;
+    if (log.type !== 'IN' && log.type !== 'OUT') {
+      continue;
+    }
+
+    const identity = ensureIdentity(log, identityCache);
+    const key = computePairingKey(log, identity);
 
     if (log.type === 'IN') {
-      if (currentOpen) {
-        console.warn('[calendar][pairing] consecutive IN punch treated as open session', userKey, currentOpen.id);
-        sessions.push(createOpenSession(currentOpen));
-      }
-      openSessions.set(userKey, log);
+      pushStack(key, log);
       continue;
     }
 
-    if (!currentOpen) {
-      console.warn('[calendar][pairing] unmatched OUT punch', userKey, log.id);
+    const inLog = popStack(key, log);
+    if (!inLog) {
+      console.warn('[calendar][pairing] unmatched OUT punch', {
+        key,
+        outLogId: log.id,
+        identity,
+      });
       continue;
     }
 
-    if (log.timestampMs <= currentOpen.timestampMs) {
-      console.warn('[calendar][pairing] non positive duration', userKey, log.id);
+    if (log.timestampMs <= inLog.timestampMs) {
+      console.warn('[calendar][pairing] non positive duration', {
+        key,
+        inLogId: inLog.id,
+        outLogId: log.id,
+      });
       continue;
     }
 
-    const durationHours = (log.timestampMs - currentOpen.timestampMs) / (1000 * 60 * 60);
+    const inIdentity = ensureIdentity(inLog, identityCache);
+    const durationHours = (log.timestampMs - inLog.timestampMs) / (1000 * 60 * 60);
+    const sessionEmployeeCode = identity.employeeCode ?? inIdentity.employeeCode;
+    const sessionUserRecId = identity.userRecId ?? inIdentity.userRecId;
+    const sessionUserId =
+      sessionEmployeeCode ??
+      sessionUserRecId ??
+      inLog.userId ??
+      log.userId ??
+      inLog.userLookupKeys.find((value) => value) ??
+      log.userLookupKeys.find((value) => value) ??
+      null;
+
     sessions.push({
-      userId: currentOpen.userId ?? log.userId ?? null,
-      startMs: currentOpen.timestampMs,
+      userId: sessionUserId,
+      startMs: inLog.timestampMs,
       endMs: log.timestampMs,
-      startLogId: currentOpen.id,
+      startLogId: inLog.id,
       endLogId: log.id,
-      userName: currentOpen.userName ?? log.userName ?? '未登録ユーザー',
-      siteName: currentOpen.siteName ?? log.siteName ?? null,
-      clockInAt: formatJstTime(currentOpen.timestampMs),
+      userName: inLog.userName ?? log.userName ?? '未登録ユーザー',
+      siteName: inLog.siteName ?? log.siteName ?? null,
+      clockInAt: formatJstTime(inLog.timestampMs),
       clockOutAt: formatJstTime(log.timestampMs),
       hours: roundHours(durationHours),
       status: '正常',
-      machineId: currentOpen.machineId ?? log.machineId ?? null,
+      machineId: inLog.machineId ?? log.machineId ?? null,
     });
-    openSessions.set(userKey, null);
   }
 
-  for (const [userKey, pending] of openSessions) {
-    if (pending) {
-      console.warn('[calendar][pairing] unmatched IN punch', userKey, pending.id);
-      sessions.push(createOpenSession(pending));
+  for (const [key, stack] of stacks) {
+    if (!stack) {
+      continue;
+    }
+    while (stack.length > 0) {
+      const pending = stack.pop();
+      if (!pending) {
+        continue;
+      }
+      const identity = ensureIdentity(pending, identityCache);
+      console.warn('[calendar][pairing] unmatched IN punch', {
+        key,
+        inLogId: pending.id,
+        identity,
+      });
+      sessions.push(createOpenSession(pending, identity));
     }
   }
 

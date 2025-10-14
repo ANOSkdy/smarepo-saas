@@ -2,6 +2,7 @@
 // OUTログをトリガに Session と ReportIndex を自動生成する軽量ワーカー
 // 変更点: airtable を関数内 dynamic import 化し、トップレベル副作用を排除
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { hasUserIdentity, resolveUserIdentity } from './userIdentity';
 
 const LOGS_TABLE = process.env.AIRTABLE_TABLE_LOGS ?? 'Logs';
 const SESSIONS_TABLE = process.env.AIRTABLE_TABLE_SESSIONS ?? 'Sessions';
@@ -18,55 +19,17 @@ type AirtableLogRecordLike = {
   fields?: Record<string, unknown>;
 };
 
-const coerceEmployeeCode = (value: unknown): string | undefined => {
-  if (typeof value === 'number') {
-    return String(value);
+const toLogRec = (record: AirtableLogRecordLike | null | undefined) => {
+  if (!record) {
+    return null;
   }
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed ? trimmed : undefined;
-  }
-  return undefined;
-};
-
-const coerceUserRecId = (value: unknown): string | undefined => {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed ? trimmed : undefined;
-  }
-  if (value != null) {
-    const str = String(value).trim();
-    return str ? str : undefined;
-  }
-  return undefined;
-};
-
-export function resolveUserIdentity(
-  log: AirtableLogRecordLike | null | undefined,
-): { employeeCode?: string; userRecId?: string } {
-  if (!log) {
-    return {};
-  }
-
-  const getter = typeof log.get === 'function' ? (field: string) => log.get!(field) : undefined;
-  const fields = (log as { fields?: Record<string, unknown> })?.fields ?? {};
-  const direct = getter ? getter('userId') : fields['userId'];
-  const lookup = getter ? getter('userId (from user)') : fields['userId (from user)'];
-  const link = getter ? getter('user') : fields['user'];
-
-  const employeeCode = coerceEmployeeCode(direct) ?? coerceEmployeeCode(lookup);
-  const userRecId = Array.isArray(link)
-    ? coerceUserRecId(link[0])
-    : coerceUserRecId(link);
-
-  return {
-    employeeCode,
-    userRecId,
+  const raw = record as { id?: string; getId?: () => string } & {
+    fields?: Record<string, unknown>;
   };
-}
-
-const hasUserIdentity = (identity: { employeeCode?: string; userRecId?: string }) =>
-  Boolean(identity.employeeCode || identity.userRecId);
+  const id = raw.id ?? (typeof raw.getId === 'function' ? raw.getId() : '');
+  const fields = raw.fields ?? {};
+  return { id, fields };
+};
 
 function toJstParts(ts: Date) {
   const jst = new Date(ts.getTime() + 9 * 60 * 60 * 1000);
@@ -148,7 +111,7 @@ export async function sessionWorkerCreateFromOutLog(
     const siteName = String(out.get('siteName') ?? '');
     const workDescription = String(out.get('workDescription') ?? '');
 
-    const outIdentity = resolveUserIdentity(out);
+    const outIdentity = resolveUserIdentity(toLogRec(out));
     const snapshot = {
       userId: out.get('userId'),
       userIdFromUser: out.get('userId (from user)'),
@@ -168,18 +131,17 @@ export async function sessionWorkerCreateFromOutLog(
     const isoOut = outTsIso;
     const userMatches: string[] = [];
     if (outIdentity.employeeCode) {
-      userMatches.push(`{userId}=${q(outIdentity.employeeCode)}`);
+      userMatches.push(`({userId}=${q(outIdentity.employeeCode)})`);
     }
     if (outIdentity.userRecId) {
-      userMatches.push(`FIND(${q(outIdentity.userRecId)}, ARRAYJOIN({user})) > 0`);
+      userMatches.push(`(FIND(${q(outIdentity.userRecId)}, ARRAYJOIN({user})) > 0)`);
     }
-    const userClause =
-      userMatches.length === 1 ? userMatches[0] : `OR(${userMatches.join(',')})`;
+    const userClause = userMatches.length > 0 ? `OR(${userMatches.join(',')})` : '';
     const filterParts = [
       `{type}='IN'`,
       userClause,
       `IS_BEFORE({timestamp}, DATETIME_PARSE(${q(isoOut)}))`,
-    ];
+    ].filter(Boolean);
     const filterByFormula = `AND(${filterParts.join(',')})`;
 
     const candidates = await selectAll(base, LOGS_TABLE, {
@@ -209,7 +171,7 @@ export async function sessionWorkerCreateFromOutLog(
         userClause,
         `IS_AFTER({timestamp}, DATETIME_PARSE(${q(twelveHoursAgoIso)}))`,
         `IS_BEFORE({timestamp}, DATETIME_PARSE(${q(isoOut)}))`,
-      ];
+      ].filter(Boolean);
       const fallbackFormula = `AND(${fallbackParts.join(',')})`;
       const fallback = await selectAll(base, LOGS_TABLE, {
         filterByFormula: fallbackFormula,
@@ -253,7 +215,7 @@ export async function sessionWorkerCreateFromOutLog(
     const hours = round2(clamp((outTs.getTime() - inTs.getTime()) / 3600000, 0, 24));
     const { year, month, day, dateStr } = toJstParts(inTs);
 
-    const inIdentity = resolveUserIdentity(inRec);
+    const inIdentity = resolveUserIdentity(toLogRec(inRec));
     const sessionEmployeeCode = outIdentity.employeeCode ?? inIdentity.employeeCode;
     const sessionUserRecId = outIdentity.userRecId ?? inIdentity.userRecId;
     const sessionUserId = sessionEmployeeCode ?? sessionUserRecId ?? '';
