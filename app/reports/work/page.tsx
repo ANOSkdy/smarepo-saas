@@ -1,6 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import NavTabs from '@/components/NavTabs';
 
 type DayRow = {
   day: string;
@@ -42,6 +44,8 @@ function toCsv(rows: ReportRow[]): string {
   return lines.join('\n');
 }
 
+type SortKey = 'user-asc' | 'total-desc';
+
 export default function WorkReportPage() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -52,6 +56,7 @@ export default function WorkReportPage() {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>('user-asc');
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -86,11 +91,27 @@ export default function WorkReportPage() {
     fetchData();
   }, [fetchData]);
 
-  const csvContent = useMemo(() => (data ? toCsv(data.result) : ''), [data]);
-  const hasData = data && data.result.length > 0;
+  const sortedRows = useMemo<ReportRow[]>(() => {
+    if (!data?.result) {
+      return [];
+    }
+    const rows = [...data.result];
+    if (sortKey === 'user-asc') {
+      rows.sort((a, b) => (a.userKey ?? '').localeCompare(b.userKey ?? ''));
+    } else if (sortKey === 'total-desc') {
+      const getTotal = (row: ReportRow) =>
+        row.days.reduce((sum, day) => sum + day.totalMins, 0);
+      rows.sort((a, b) => getTotal(b) - getTotal(a));
+    }
+    return rows;
+  }, [data, sortKey]);
+
+  const csvContent = useMemo(() => (sortedRows.length ? toCsv(sortedRows) : ''), [sortedRows]);
+  const hasData = sortedRows.length > 0;
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
+      <NavTabs />
       <header className="space-y-1">
         <p className="text-sm font-medium text-primary">稼働ログ分析</p>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">月次稼働集計（Logsのみ）</h1>
@@ -166,6 +187,20 @@ export default function WorkReportPage() {
             id="work-report-machine"
           />
         </div>
+        <div className="flex flex-col">
+          <label className="block text-xs font-medium text-muted-foreground" htmlFor="work-report-sort">
+            ソート
+          </label>
+          <select
+            id="work-report-sort"
+            className="mt-1 w-48 rounded border border-input px-2 py-1 text-sm"
+            value={sortKey}
+            onChange={(event) => setSortKey(event.target.value as SortKey)}
+          >
+            <option value="user-asc">ユーザー昇順</option>
+            <option value="total-desc">合計時間降順</option>
+          </select>
+        </div>
         <button
           type="button"
           onClick={fetchData}
@@ -183,6 +218,12 @@ export default function WorkReportPage() {
             CSVダウンロード
           </a>
         )}
+        <Link
+          href={`/reports/work/print?${queryString}`}
+          className="rounded border border-input px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
+        >
+          PDF出力（印刷）
+        </Link>
       </section>
 
       {error && <p className="text-sm text-destructive">エラー: {error}</p>}
@@ -201,7 +242,7 @@ export default function WorkReportPage() {
           </thead>
           <tbody>
             {hasData ? (
-              data!.result.flatMap((row) => {
+              sortedRows.flatMap((row) => {
                 if (row.days.length === 0) {
                   return (
                     <tr key={`${row.userKey}-empty`} className="odd:bg-background">

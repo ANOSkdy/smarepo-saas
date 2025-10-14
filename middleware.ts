@@ -1,4 +1,16 @@
-export { auth as middleware } from "@/lib/auth";
+import { NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
+
+export default auth((req) => {
+  const url = req.nextUrl.clone();
+  if (url.pathname.startsWith('/nfc')) {
+    if (!url.searchParams.has('machineId')) {
+      url.searchParams.set('machineId', '1001');
+      return NextResponse.rewrite(url);
+    }
+  }
+  return NextResponse.next();
+});
 
 // この設定で、どのページを認証保護の対象にするかを定義します
 export const config = {
@@ -11,6 +23,6 @@ export const config = {
      * - /favicon.ico (ファビコンファイル)
      * - /login (ログインページ)
      */
-    "/((?!api|_next/static|_next/image|favicon.ico|login).*)",
+    '/((?!api|_next/static|_next/image|favicon.ico|login).*)',
   ],
 };

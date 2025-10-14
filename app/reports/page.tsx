@@ -1,6 +1,7 @@
 import { ReportsContent, type ReportRecord } from './components/ResultsTable';
 import type { FiltersValue } from './components/Filters';
 import { buildSessionReport, getLogsBetween } from '@/lib/airtable/logs';
+import NavTabs from '@/components/NavTabs';
 
 const JST_OFFSET_MINUTES = 9 * 60;
 
@@ -72,6 +73,7 @@ export default async function ReportsPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
+      <NavTabs />
       <header className="space-y-2">
         <p className="text-sm font-medium text-primary">帳票出力</p>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">稼働集計</h1>

@@ -1,9 +1,9 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import StampCard from '@/components/StampCard';
 import { getTodayLogs } from '@/lib/airtable';
 import { ROUTES } from '@/src/constants/routes';
+import NavTabs from '@/components/NavTabs';
 
 // ページが動的にレンダリングされるように設定
 export const dynamic = 'force-dynamic';
@@ -12,13 +12,21 @@ type NFCPageProps = {
   searchParams: { [key: string]: string | string[] | undefined };
 };
 
+function resolveMachineId(searchParams: NFCPageProps['searchParams']): string | null {
+  const candidate = searchParams.machineId ?? searchParams.machineid;
+  if (Array.isArray(candidate)) {
+    return candidate[0] ?? null;
+  }
+  return candidate ?? null;
+}
+
 export default async function NFCPage({ searchParams }: NFCPageProps) {
   const session = await auth();
   if (!session?.user?.id) {
     redirect(ROUTES.LOGIN);
   }
 
-  const machineIdParam = searchParams.machineid;
+  const machineIdParam = resolveMachineId(searchParams);
   if (typeof machineIdParam !== 'string') {
     return (
       <div role="alert" className="rounded-lg border border-brand-border bg-brand-surface-alt p-4 text-brand-text">
@@ -39,14 +47,7 @@ export default async function NFCPage({ searchParams }: NFCPageProps) {
 
     return (
       <section className="flex flex-1 flex-col gap-4">
-        <div>
-          <Link
-            href="/reports"
-            className="inline-flex items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
-          >
-            稼働集計
-          </Link>
-        </div>
+        <NavTabs />
         <div className="flex flex-1 items-center justify-center">
           <StampCard
             initialStampType={initialStampType}
