@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import StampCard from '@/components/StampCard';
@@ -89,14 +88,6 @@ export default async function NFCPage({ searchParams }: NFCPageProps) {
 
     return (
       <section className="flex flex-1 flex-col gap-4">
-        <div>
-          <Link
-            href="/reports"
-            className="inline-flex items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
-          >
-            稼働集計
-          </Link>
-        </div>
         <div className="flex flex-1 items-center justify-center">
           <StampCard
             initialStampType={initialStampType}

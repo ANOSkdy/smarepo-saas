@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 const NAV_TABS = [
   // ダッシュボードが月次カレンダーを代替
   { href: '/dashboard', label: 'カレンダー' },
-  { href: '/reports/work', label: '稼働集計' },
+  { href: '/reports', label: '稼働集計' },
   { href: '/nfc?machineId=1001', label: '打刻ページ' },
 ] as const;
 
