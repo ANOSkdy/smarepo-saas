@@ -86,11 +86,9 @@ export async function POST(req: NextRequest) {
     }).format(now).replace(/\//g, '-');
 
     const userRecordId = session.user.id ? String(session.user.id) : '';
-    const employeeCode = session.user.userId ? String(session.user.userId) : '';
 
-    if (!employeeCode || !userRecordId) {
-      logger.warn('stamp missing user identity', {
-        hasEmployeeCode: Boolean(employeeCode),
+    if (!userRecordId) {
+      logger.warn('stamp missing user link', {
         hasUserRecordId: Boolean(userRecordId),
       });
     }
@@ -99,7 +97,6 @@ export async function POST(req: NextRequest) {
       timestamp,
       date: dateJST,
       user: userRecordId ? [userRecordId] : undefined, // AirtableのUsersテーブルのレコードID
-      userId: employeeCode || undefined, // 従業員コード
       machine: [machineRecordId],
       siteName: nearestSite?.fields.name ?? null,
       lat,
@@ -167,8 +164,8 @@ export async function POST(req: NextRequest) {
         }
       }
       logger.info('stamp record created', {
-        employeeCode: fields.userId,
         userRecordId,
+        hasUserLink: Array.isArray(fields.user) && fields.user.length > 0,
         recordId: outLogId,
         type,
       });
