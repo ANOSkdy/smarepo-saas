@@ -1,5 +1,6 @@
 import { Record as AirtableRecord } from 'airtable';
 import { logsTable } from '@/lib/airtable';
+import { resolveUserIdentity } from '@/lib/services/userIdentity';
 import type { LogFields } from '@/types';
 import { getUsersMap } from './users';
 import { AIRTABLE_PAGE_SIZE, JST_OFFSET, LOG_FIELDS } from './schema';
@@ -116,6 +117,20 @@ function normalizeMachineIdentifier(raw: unknown): string | null {
   const [first] = text.split(',');
   const normalized = first.trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+type ResolvedLogIdentity = ReturnType<typeof resolveUserIdentity>;
+
+function resolveIdentityForNormalizedLog(log: NormalizedLog): { identity: ResolvedLogIdentity; key: string } {
+  const identity = resolveUserIdentity({ id: log.id, fields: log.rawFields });
+  const fallbackUserId = typeof log.userId === 'string' && log.userId.length > 0 ? log.userId : undefined;
+  const fallbackUserName = typeof log.userName === 'string' && log.userName.length > 0 ? log.userName : undefined;
+  const key = identity.employeeCode ?? identity.userRecId ?? fallbackUserId ?? fallbackUserName ?? 'unknown-user';
+  return { identity, key };
+}
+
+function debugIdentity(identity: ResolvedLogIdentity) {
+  return JSON.stringify(identity ?? {});
 }
 
 function readLookupField(
@@ -295,9 +310,16 @@ function roundHours(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function createOpenSession(source: NormalizedLog): SessionDetail {
+function createOpenSession(source: NormalizedLog, identityOverride?: ResolvedLogIdentity): SessionDetail {
+  const resolved = identityOverride ?? resolveIdentityForNormalizedLog(source).identity;
+  const userId =
+    source.userId ??
+    (typeof resolved.employeeCode === 'string' ? resolved.employeeCode : undefined) ??
+    (typeof resolved.userRecId === 'string' ? resolved.userRecId : undefined) ??
+    null;
+
   return {
-    userId: source.userId,
+    userId,
     startMs: source.timestampMs,
     startLogId: source.id,
     userName: source.userName ?? '未登録ユーザー',
@@ -308,56 +330,95 @@ function createOpenSession(source: NormalizedLog): SessionDetail {
   };
 }
 
+type StackEntry = { log: NormalizedLog; identity: ResolvedLogIdentity };
+
+function createCompletedSession(
+  clockIn: NormalizedLog,
+  clockInIdentity: ResolvedLogIdentity,
+  clockOut: NormalizedLog,
+  clockOutIdentity: ResolvedLogIdentity,
+): SessionDetail {
+  const userId =
+    clockIn.userId ??
+    clockOut.userId ??
+    (typeof clockInIdentity.employeeCode === 'string' ? clockInIdentity.employeeCode : undefined) ??
+    (typeof clockOutIdentity.employeeCode === 'string' ? clockOutIdentity.employeeCode : undefined) ??
+    (typeof clockInIdentity.userRecId === 'string' ? clockInIdentity.userRecId : undefined) ??
+    (typeof clockOutIdentity.userRecId === 'string' ? clockOutIdentity.userRecId : undefined) ??
+    null;
+
+  const durationHours = (clockOut.timestampMs - clockIn.timestampMs) / (1000 * 60 * 60);
+
+  return {
+    userId,
+    startMs: clockIn.timestampMs,
+    endMs: clockOut.timestampMs,
+    startLogId: clockIn.id,
+    endLogId: clockOut.id,
+    userName: clockIn.userName ?? clockOut.userName ?? '未登録ユーザー',
+    siteName: clockIn.siteName ?? clockOut.siteName ?? null,
+    clockInAt: formatJstTime(clockIn.timestampMs),
+    clockOutAt: formatJstTime(clockOut.timestampMs),
+    hours: roundHours(durationHours),
+    status: '正常',
+    machineId: clockIn.machineId ?? clockOut.machineId ?? null,
+  };
+}
+
 function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
   const sorted = [...logs].sort((a, b) => a.timestampMs - b.timestampMs);
-  const openSessions = new Map<string, NormalizedLog | null>();
+  const stacks = new Map<string, StackEntry[]>();
   const sessions: SessionDetail[] = [];
 
+  const ensureStack = (key: string) => {
+    if (!stacks.has(key)) {
+      stacks.set(key, []);
+    }
+    return stacks.get(key)!;
+  };
+
   for (const log of sorted) {
-    const userKey = log.userId ?? log.userName ?? 'unknown-user';
-    const currentOpen = openSessions.get(userKey) ?? null;
+    const { identity, key } = resolveIdentityForNormalizedLog(log);
 
     if (log.type === 'IN') {
-      if (currentOpen) {
-        console.warn('[calendar][pairing] consecutive IN punch treated as open session', userKey, currentOpen.id);
-        sessions.push(createOpenSession(currentOpen));
-      }
-      openSessions.set(userKey, log);
+      ensureStack(key).push({ log, identity });
       continue;
     }
 
-    if (!currentOpen) {
-      console.warn('[calendar][pairing] unmatched OUT punch', userKey, log.id);
+    if (log.type !== 'OUT') {
       continue;
     }
 
-    if (log.timestampMs <= currentOpen.timestampMs) {
-      console.warn('[calendar][pairing] non positive duration', userKey, log.id);
+    const stack = stacks.get(key);
+    if (!stack || stack.length === 0) {
+      console.warn(
+        `[calendar][pairing] unmatched OUT punch { key: '${key}', recId: '${log.id}', identity: ${debugIdentity(identity)} }`,
+      );
       continue;
     }
 
-    const durationHours = (log.timestampMs - currentOpen.timestampMs) / (1000 * 60 * 60);
-    sessions.push({
-      userId: currentOpen.userId ?? log.userId ?? null,
-      startMs: currentOpen.timestampMs,
-      endMs: log.timestampMs,
-      startLogId: currentOpen.id,
-      endLogId: log.id,
-      userName: currentOpen.userName ?? log.userName ?? '未登録ユーザー',
-      siteName: currentOpen.siteName ?? log.siteName ?? null,
-      clockInAt: formatJstTime(currentOpen.timestampMs),
-      clockOutAt: formatJstTime(log.timestampMs),
-      hours: roundHours(durationHours),
-      status: '正常',
-      machineId: currentOpen.machineId ?? log.machineId ?? null,
-    });
-    openSessions.set(userKey, null);
+    const entry = stack.pop()!;
+    if (stack.length === 0) {
+      stacks.delete(key);
+    }
+
+    if (log.timestampMs <= entry.log.timestampMs) {
+      console.warn(
+        `[calendar][pairing] non positive duration { key: '${key}', recId: '${log.id}', identity: ${debugIdentity(identity)}, inRecId: '${entry.log.id}' }`,
+      );
+      ensureStack(key).push(entry);
+      continue;
+    }
+
+    sessions.push(createCompletedSession(entry.log, entry.identity, log, identity));
   }
 
-  for (const [userKey, pending] of openSessions) {
-    if (pending) {
-      console.warn('[calendar][pairing] unmatched IN punch', userKey, pending.id);
-      sessions.push(createOpenSession(pending));
+  for (const [key, stack] of stacks.entries()) {
+    for (const entry of stack) {
+      console.warn(
+        `[calendar][pairing] unmatched IN punch { key: '${key}', recId: '${entry.log.id}', identity: ${debugIdentity(entry.identity)} }`,
+      );
+      sessions.push(createOpenSession(entry.log, entry.identity));
     }
   }
 
