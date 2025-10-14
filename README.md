@@ -41,8 +41,7 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 - セッション異常時はブラウザの Cookie を削除して再ログインする
 - 環境変数更新後は Vercel の対象環境へ再デプロイする
 
-## /api/out-to-session
-- Required env: `AIRTABLE_API_KEY`, `AIRTABLE_BASE_ID`
-- Optional env: `AIRTABLE_TABLE_LOGS` (default `Logs`), `AIRTABLE_TABLE_SESSIONS` (default `Session`)
-- `curl -sS -X POST https://<YOUR_DEPLOY>/api/out-to-session -H "Content-Type: application/json" -d '{"outLogId":"recXXXXXXXXXXXX"}'`
-- Matching IN creates Session row; repeats with same OUT are skipped
+## 集計方針の簡素化
+本システムは Logs テーブルのみを検索・集計対象とします。IN/OUT のペアリングはユーザー単位で行い、未マッチの OUT は
+警告ログを残して破棄します。現場名・作業内容・機械名などの属性は IN 打刻を優先し、OUT 打刻で補完可能な場合のみ
+上書きします。

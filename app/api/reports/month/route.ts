@@ -1,8 +1,8 @@
 import { Buffer } from 'node:buffer';
 import { NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
-import { base as airtableBase } from '@/lib/airtable';
 import { auth } from '@/lib/auth';
+import { buildSessionReport, getLogsBetween } from '@/lib/airtable/logs';
 
 export const runtime = 'nodejs';
 
@@ -29,6 +29,13 @@ function assertInt(name: string, value: string | null): number {
   return parseInt(value, 10);
 }
 
+function resolveMonthRange(year: number, month: number) {
+  const startUtc = new Date(Date.UTC(year, month - 1, 1, -9, 0, 0));
+  const nextMonth = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
+  const endUtc = new Date(Date.UTC(nextMonth.year, nextMonth.month - 1, 1, -9, 0, 0));
+  return { from: startUtc, to: endUtc };
+}
+
 export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user) {
@@ -47,48 +54,38 @@ export async function GET(req: Request) {
   const userId = url.searchParams.get('userId') ?? undefined;
   const site = url.searchParams.get('site') ?? undefined;
 
-  const base = airtableBase;
-  const tableName = process.env.AIRTABLE_TABLE_SESSIONS ?? 'Session';
-
-  const filters: string[] = [`{year} = ${year}`, `{month} = ${month}`];
-  if (userId) {
-    filters.push(`{userId} = "${userId}"`);
-  }
-  if (site) {
-    filters.push(`{sitename} = "${site}"`);
-  }
-  const filterByFormula = `AND(${filters.join(',')})`;
-
-  const records: SessionRecord[] = [];
+  let rows: SessionRecord[] = [];
   try {
-    await new Promise<void>((resolve, reject) => {
-      base(tableName)
-        .select({
-          filterByFormula,
-          pageSize: 100,
-          sort: [
-            { field: 'day', direction: 'asc' },
-            { field: 'userId', direction: 'asc' },
-          ],
-        })
-        .eachPage(
-          (rows, next) => {
-            (rows as unknown as SessionRecord[]).forEach((row) => {
-              records.push(row);
-            });
-            next();
-          },
-          (err) => {
-            if (err) {
-              reject(err);
-              return;
-            }
-            resolve();
-          }
-        );
+    const range = resolveMonthRange(year, month);
+    const logs = await getLogsBetween(range);
+    const sessions = buildSessionReport(logs);
+    const filtered = sessions.filter((session) => {
+      if (userId && session.userId !== userId) {
+        return false;
+      }
+      if (site && session.siteName !== site) {
+        return false;
+      }
+      return true;
     });
-  } catch {
-    return NextResponse.json({ ok: false, error: 'FAILED_TO_FETCH_SESSIONS' }, { status: 500 });
+    rows = filtered.map((session) => ({
+      id: session.id,
+      fields: {
+        year,
+        month,
+        day: Number.parseInt(session.date.split('-')[2] ?? '0', 10) || undefined,
+        userId: session.userId ?? undefined,
+        username: session.userName,
+        sitename: session.siteName ?? undefined,
+        workdescription: session.workDescription ?? undefined,
+        clockInAt: session.clockInAt,
+        clockOutAt: session.clockOutAt,
+        hours: session.hours,
+      },
+    }));
+  } catch (error) {
+    console.error('[reports][month] failed to build workbook', error);
+    return NextResponse.json({ ok: false, error: 'FAILED_TO_BUILD_REPORT' }, { status: 500 });
   }
 
   const workbook = new ExcelJS.Workbook();
@@ -108,7 +105,7 @@ export async function GET(req: Request) {
   rowsData.push(headerRow);
   worksheet.addRow(headerRow);
 
-  for (const record of records) {
+  for (const record of rows) {
     const fields = record.fields ?? {};
     const dateValue =
       fields.year && fields.month && fields.day

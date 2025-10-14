@@ -1,3 +1,4 @@
+// Logs テーブルのみを利用し、旧 Session / ReportIndex テーブルは廃止済み。
 export const LOGS_TABLE = process.env.AIRTABLE_TABLE_LOGS ?? 'Logs';
 
 export const LOG_FIELDS = {
@@ -11,6 +12,10 @@ export const LOG_FIELDS = {
   machineid: 'machineid',
   machineIdFromMachine: 'machineId (from machine)',
   machineidFromMachine: 'machineid (from machine)',
+  machineName: 'machineName',
+  machinename: 'machinename',
+  machineNameFromMachine: 'machineName (from machine)',
+  machinenameFromMachine: 'machinename (from machine)',
   site: 'site',
   siteName: 'siteName',
   type: 'type',

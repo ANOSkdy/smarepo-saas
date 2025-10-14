@@ -15,6 +15,7 @@ export type NormalizedLog = {
   userName: string | null;
   userLookupKeys: string[];
   machineId: string | null;
+  machineName: string | null;
   siteId: string | null;
   siteName: string | null;
   workType: string | null;
@@ -45,6 +46,8 @@ export type SessionDetail = {
   hours?: number;
   status: SessionStatus;
   machineId: string | null;
+  machineName: string | null;
+  workDescription: string | null;
 };
 
 const RETRY_LIMIT = 3;
@@ -67,6 +70,13 @@ const MACHINE_ID_LOOKUP_FIELDS = [
   LOG_FIELDS.machineid,
   LOG_FIELDS.machineIdFromMachine,
   LOG_FIELDS.machineidFromMachine,
+] as const;
+
+const MACHINE_NAME_LOOKUP_FIELDS = [
+  LOG_FIELDS.machineName,
+  LOG_FIELDS.machinename,
+  LOG_FIELDS.machineNameFromMachine,
+  LOG_FIELDS.machinenameFromMachine,
 ] as const;
 
 const USER_NAME_LOOKUP_FIELDS = [
@@ -176,6 +186,9 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
     return typeof rawEmail === 'string' ? rawEmail : null;
   })();
   const machineId = readLookupField(fields, MACHINE_ID_LOOKUP_FIELDS, normalizeMachineIdentifier);
+  const machineNameLookup = readLookupField(fields, MACHINE_NAME_LOOKUP_FIELDS, normalizeLookupText);
+  const fallbackMachineName = normalizeLookupText(fields['machinename'] ?? fields['machineName']);
+  const machineName = machineNameLookup ?? fallbackMachineName;
 
   const lookupKeys = new Set<string>();
   if (userLinks.length > 0) {
@@ -201,6 +214,7 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
     userName,
     userLookupKeys: Array.from(lookupKeys),
     machineId,
+    machineName,
     siteId: siteLinks.length > 0 ? String(siteLinks[0]) : null,
     siteName,
     workType,
@@ -261,6 +275,7 @@ export async function getLogsBetween(params: { from: Date; to: Date }): Promise<
       ...log,
       userName: resolvedName ?? '未登録ユーザー',
       machineId: log.machineId ?? null,
+      machineName: log.machineName ?? null,
     };
   });
 }
@@ -295,6 +310,23 @@ function roundHours(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+function formatJstIso(timestampMs: number) {
+  const { year, month, day, hour, minute, second } = toJstParts(timestampMs);
+  return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:${pad(second)}+09:00`;
+}
+
+function resolveWorkDescription(source: NormalizedLog | null): string | null {
+  if (!source) {
+    return null;
+  }
+  const work = typeof source.workType === 'string' ? source.workType.trim() : '';
+  if (work) {
+    return work;
+  }
+  const note = typeof source.note === 'string' ? source.note.trim() : '';
+  return note || null;
+}
+
 function createOpenSession(source: NormalizedLog): SessionDetail {
   return {
     userId: source.userId,
@@ -305,6 +337,8 @@ function createOpenSession(source: NormalizedLog): SessionDetail {
     clockInAt: formatJstTime(source.timestampMs),
     status: '稼働中',
     machineId: source.machineId ?? null,
+    machineName: source.machineName ?? null,
+    workDescription: resolveWorkDescription(source),
   };
 }
 
@@ -350,6 +384,9 @@ function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
       hours: roundHours(durationHours),
       status: '正常',
       machineId: currentOpen.machineId ?? log.machineId ?? null,
+      machineName: currentOpen.machineName ?? log.machineName ?? null,
+      workDescription:
+        resolveWorkDescription(currentOpen) ?? resolveWorkDescription(log),
     });
     openSessions.set(userKey, null);
   }
@@ -396,4 +433,70 @@ export function summariseMonth(logs: NormalizedLog[]): CalendarDaySummary[] {
 export function buildDayDetail(logs: NormalizedLog[]): { sessions: SessionDetail[] } {
   const sessions = buildSessionDetails(logs);
   return { sessions };
+}
+
+type CompletedSessionDetail = SessionDetail & {
+  endMs: number;
+  clockOutAt: string;
+  hours: number;
+  status: '正常';
+};
+
+function isCompletedSession(session: SessionDetail): session is CompletedSessionDetail {
+  return (
+    session.status === '正常' &&
+    typeof session.endMs === 'number' &&
+    typeof session.hours === 'number' &&
+    typeof session.clockOutAt === 'string'
+  );
+}
+
+export type SessionReportRow = {
+  id: string;
+  date: string;
+  userId: string | null;
+  userName: string;
+  siteName: string | null;
+  machineId: string | null;
+  machineName: string | null;
+  workDescription: string | null;
+  clockInAt: string;
+  clockOutAt: string;
+  hours: number;
+};
+
+function compareLocaleAware(a: string, b: string) {
+  return a.localeCompare(b, 'ja');
+}
+
+export function buildSessionReport(logs: NormalizedLog[]): SessionReportRow[] {
+  const sessions = buildSessionDetails(logs);
+  const completed = sessions.filter(isCompletedSession);
+
+  const rows = completed.map((session) => {
+    const machineLabel = session.machineName ?? session.machineId ?? null;
+    return {
+      id: session.endLogId ?? session.startLogId,
+      date: formatJstDate(session.startMs),
+      userId: session.userId ?? null,
+      userName: session.userName,
+      siteName: session.siteName ?? null,
+      machineId: session.machineId ?? null,
+      machineName: machineLabel,
+      workDescription: session.workDescription ?? null,
+      clockInAt: formatJstIso(session.startMs),
+      clockOutAt: formatJstIso(session.endMs),
+      hours: session.hours,
+    } satisfies SessionReportRow;
+  });
+
+  return rows.sort((a, b) => {
+    return (
+      compareLocaleAware(a.siteName ?? '', b.siteName ?? '') ||
+      compareLocaleAware(a.userName, b.userName) ||
+      compareLocaleAware(a.machineName ?? '', b.machineName ?? '') ||
+      compareLocaleAware(a.date, b.date) ||
+      compareLocaleAware(a.clockInAt, b.clockInAt)
+    );
+  });
 }

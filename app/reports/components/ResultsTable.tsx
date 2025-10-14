@@ -140,7 +140,7 @@ export function ReportsContent({ initialRecords, initialFilter }: ReportsContent
       if (filters.username) params.set('username', filters.username);
       if (filters.machinename) params.set('machinename', filters.machinename);
 
-      const response = await fetch(`/api/report-index/search?${params.toString()}`, {
+      const response = await fetch(`/api/reports/search?${params.toString()}`, {
         method: 'GET',
         cache: 'no-store',
       });

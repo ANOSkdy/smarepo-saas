@@ -1,23 +1,8 @@
 import { NextResponse } from 'next/server';
-import {
-  listRecords,
-  type AirtableRecord,
-} from '@/src/lib/airtable/client';
-import {
-  buildFreeUserColumnsWorkbook,
-  type ExcelRow,
-} from '@/src/lib/excel/freeUserColumns';
+import { buildSessionReport, getLogsBetween, type SessionReportRow } from '@/lib/airtable/logs';
+import { buildFreeUserColumnsWorkbook, type ExcelRow } from '@/src/lib/excel/freeUserColumns';
 
 export const runtime = 'nodejs';
-
-type ReportIndexFields = {
-  date?: string;
-  sitename?: string;
-  username?: string;
-  machinename?: string;
-  workdescription?: string;
-  hours?: number;
-};
 
 type ExportRequest = {
   year?: number;
@@ -27,55 +12,32 @@ type ExportRequest = {
   machinename?: string;
 };
 
-const REPORT_INDEX_TABLE =
-  process.env.AIRTABLE_TABLE_REPORT_INDEX || 'ReportIndex';
-
-function escapeFormulaValue(value: string): string {
-  return value.replaceAll("'", "\\'");
+function resolveMonthRange(year: number, month: number) {
+  const startUtc = new Date(Date.UTC(year, month - 1, 1, -9, 0, 0));
+  const nextMonth = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
+  const endUtc = new Date(Date.UTC(nextMonth.year, nextMonth.month - 1, 1, -9, 0, 0));
+  return { from: startUtc, to: endUtc };
 }
 
-function buildFilterFormula({
-  year,
-  month,
-  sitename,
-  username,
-  machinename,
-}: Required<Pick<ExportRequest, 'year' | 'month'>> &
-  Omit<ExportRequest, 'year' | 'month'>): string {
-  const conditions = [
-    `({year}=${year})`,
-    `({month}=${month})`,
-  ];
-  if (sitename) {
-    conditions.push(
-      `SEARCH(LOWER('${escapeFormulaValue(sitename)}'), LOWER({sitename}&''))`
-    );
+function matchesFilter(value: string | null, query?: string): boolean {
+  if (!query) {
+    return true;
   }
-  if (username) {
-    conditions.push(
-      `SEARCH(LOWER('${escapeFormulaValue(username)}'), LOWER({username}&''))`
-    );
+  if (!value) {
+    return false;
   }
-  if (machinename) {
-    conditions.push(
-      `SEARCH(LOWER('${escapeFormulaValue(machinename)}'), LOWER({machinename}&''))`
-    );
-  }
-  return `AND(${conditions.join(',')})`;
+  return value.toLocaleLowerCase('ja').includes(query.toLocaleLowerCase('ja'));
 }
 
-function toExcelRows(records: AirtableRecord<ReportIndexFields>[]): ExcelRow[] {
-  return records.map((record) => {
-    const fields = record.fields;
-    return {
-      date: fields.date ?? '',
-      sitename: fields.sitename ?? '',
-      username: fields.username ?? '',
-      machinename: fields.machinename ?? '',
-      workdescription: fields.workdescription ?? '',
-      hours: Number(fields.hours ?? 0),
-    } satisfies ExcelRow;
-  });
+function toExcelRows(records: SessionReportRow[]): ExcelRow[] {
+  return records.map((record) => ({
+    date: record.date,
+    sitename: record.siteName ?? '',
+    username: record.userName,
+    machinename: record.machineName ?? record.machineId ?? '',
+    workdescription: record.workDescription ?? '',
+    hours: Number(record.hours ?? 0),
+  } satisfies ExcelRow));
 }
 
 export async function POST(request: Request) {
@@ -105,33 +67,24 @@ export async function POST(request: Request) {
     );
   }
 
-  const filterByFormula = buildFilterFormula({
-    year: yearNumber,
-    month: monthNumber,
-    sitename: payload.sitename?.trim() || undefined,
-    username: payload.username?.trim() || undefined,
-    machinename: payload.machinename?.trim() || undefined,
-  });
-
   try {
-    const records = await listRecords<ReportIndexFields>({
-      table: REPORT_INDEX_TABLE,
-      filterByFormula,
-      fields: [
-        'date',
-        'sitename',
-        'username',
-        'machinename',
-        'workdescription',
-        'hours',
-      ],
-      sort: [
-        { field: 'sitename', direction: 'asc' },
-        { field: 'username', direction: 'asc' },
-        { field: 'machinename', direction: 'asc' },
-        { field: 'date', direction: 'asc' },
-      ],
-      maxRecords: 20000,
+    const range = resolveMonthRange(yearNumber, monthNumber);
+    const logs = await getLogsBetween(range);
+    const records = buildSessionReport(logs).filter((record) => {
+      const sitename = payload.sitename?.trim();
+      const username = payload.username?.trim();
+      const machinename = payload.machinename?.trim();
+      if (!matchesFilter(record.siteName ?? null, sitename)) {
+        return false;
+      }
+      if (!matchesFilter(record.userName, username)) {
+        return false;
+      }
+      const machineLabel = record.machineName ?? record.machineId ?? null;
+      if (!matchesFilter(machineLabel, machinename)) {
+        return false;
+      }
+      return true;
     });
 
     const workbook = await buildFreeUserColumnsWorkbook(
