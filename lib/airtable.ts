@@ -83,6 +83,21 @@ export const getMachineById = async (machineId: string) => {
     throw error;
   }
 };
+
+export const getFirstMachine = async () => {
+  try {
+    const records = await machinesTable
+      .select({
+        maxRecords: 1,
+        sort: [{ field: 'machineid', direction: 'asc' }],
+      })
+      .firstPage();
+    return records[0] || null;
+  } catch (error) {
+    console.error('Error fetching first machine:', error);
+    throw error;
+  }
+};
 // ... (既存の airtable, tables, getMachineById などの定義) ...
 
 // ユーザーのレコードIDとJSTでの今日の日付を元に、当日のログを取得する関数
