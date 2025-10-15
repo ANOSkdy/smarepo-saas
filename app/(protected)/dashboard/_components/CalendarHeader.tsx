@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useMemo } from 'react';
 
 type CalendarHeaderProps = {
@@ -51,14 +50,7 @@ export default function CalendarHeader({ year, month, onPrev, onNext, onReset }:
             今月
           </button>
         </div>
-        <Link
-          href={`/api/reports/month?year=${year}&month=${month}`}
-          prefetch={false}
-          className="self-start rounded-md border border-gray-300 px-3 py-1 text-sm font-medium text-black transition hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-400"
-          aria-label="Excel出力"
-        >
-          Excel出力
-        </Link>
+        {/* Excel 出力ボタンは非表示（要件により UI から撤去） */}
       </div>
     </div>
   );
