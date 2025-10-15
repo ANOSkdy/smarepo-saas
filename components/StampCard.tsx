@@ -438,6 +438,7 @@ export default function StampCard({
   }
 
   return (
+    /* 親の max-w-md 指定と組み合わせて幅を揃える */
     <section
       className="flex min-h-[calc(100svh-72px)] w-full flex-col items-center gap-6 p-4 pb-[calc(env(safe-area-inset-bottom)+12px)]"
       aria-live="polite"
