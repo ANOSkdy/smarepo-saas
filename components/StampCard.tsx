@@ -409,7 +409,7 @@ export default function StampCard({
         aria-labelledby="location-error-title"
         aria-describedby="location-error-description"
       >
-        <div className="card w-[90vw] max-w-[560px] space-y-4 text-center">
+        <div className="card w-full space-y-4 text-center">
           <h2 id="location-error-title" className="text-lg font-semibold text-brand-text">
             位置情報の取得に失敗しました
           </h2>
@@ -445,12 +445,12 @@ export default function StampCard({
       {warning ? (
         <div
           role="status"
-          className="w-[90vw] max-w-[560px] rounded-lg border border-brand-border bg-brand-primary/10 px-4 py-2 text-sm text-brand-text"
+          className="w-full rounded-lg border border-brand-border bg-brand-primary/10 px-4 py-2 text-sm text-brand-text"
         >
           {warning}
         </div>
       ) : null}
-      <div className="card w-[90vw] max-w-[560px] text-center" role="status">
+      <div className="card w-full text-center" role="status">
         <div className="space-y-2">
           <p className="text-lg font-semibold text-brand-text">{userName} さん</p>
           <p className="text-brand-muted">
@@ -459,8 +459,8 @@ export default function StampCard({
         </div>
       </div>
       {stampType === 'IN' ? (
-        <form id="check-in-form" onSubmit={handleCheckIn} className="w-full max-w-[560px] space-y-4">
-          <div className="card w-[90vw] max-w-[560px]">
+        <form id="check-in-form" onSubmit={handleCheckIn} className="w-full space-y-4">
+          <div className="card w-full">
             <label htmlFor="workDescription" className="mb-2 block text-sm font-semibold text-brand-text">
               本日の作業内容を選択
             </label>
@@ -499,8 +499,8 @@ export default function StampCard({
           </A11yButton>
         </form>
       ) : (
-        <div className="w-full max-w-[560px] space-y-4">
-          <div className="card w-[90vw] max-w-[560px] text-center">
+        <div className="w-full space-y-4">
+          <div className="card w-full text-center">
             <p className="text-brand-text">
               <span className="font-semibold">現在の作業:</span>{' '}
               <span className="whitespace-nowrap">{lastWorkDescription || '登録なし'}</span>
@@ -511,7 +511,7 @@ export default function StampCard({
           </A11yButton>
         </div>
       )}
-      <div className="w-[90vw] max-w-[560px]">
+      <div className="w-full">
         <LogoutButton />
       </div>
     </section>

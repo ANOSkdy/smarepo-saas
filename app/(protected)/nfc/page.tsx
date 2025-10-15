@@ -84,17 +84,20 @@ export default async function NFCPage({ searchParams }: NFCPageProps) {
     // 最後のログが 'IN' なら退勤画面、そうでなければ出勤画面
     const initialStampType = lastLog?.fields.type === 'IN' ? 'OUT' : 'IN';
     const initialWorkDescription = lastLog?.fields.workDescription ?? '';
-    const machineName = machineRecord.fields.name?.trim() || resolvedMachineId;
+    const machineLabel =
+      machineRecord.fields.machineid?.trim() || resolvedMachineId || requestedMachineId || '不明';
 
     return (
-      <section className="flex flex-1 flex-col gap-4">
-        <div className="flex flex-1 items-center justify-center">
-          <StampCard
-            initialStampType={initialStampType}
-            initialWorkDescription={initialWorkDescription}
-            userName={session.user.name ?? 'ゲスト'}
-            machineName={machineName}
-          />
+      <section className="flex flex-1 flex-col">
+        <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 space-y-6">
+          <div className="flex flex-1 items-center justify-center">
+            <StampCard
+              initialStampType={initialStampType}
+              initialWorkDescription={initialWorkDescription}
+              userName={session.user.name ?? 'ゲスト'}
+              machineName={machineLabel}
+            />
+          </div>
         </div>
       </section>
     );
