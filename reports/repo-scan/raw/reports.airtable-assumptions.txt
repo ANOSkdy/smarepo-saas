@@ -1,0 +1,18 @@
+# Airtable field expectations inferred from code
+
+## User lookup
+- `/reports` loads display names from `usersTable.select({ fields: ['name'] })` and treats each `record.fields.name` as a simple string. (app/reports/page.tsx:11-22)
+- To fetch logs it relies on the Airtable record ID, assuming the Users query returns an exact `{name}` match and yields `record.id`. (lib/services/reports.ts:15-23)
+
+## Log filtering
+- `/reports` issues `logsTable.select({ filterByFormula: FIND("<userId>", ARRAYJOIN({user})) })`, so it expects the `user` column to be a Link-to-Users array containing the record ID. (lib/services/reports.ts:22-27)
+- Only the fields `type`, `timestamp`, `date`, `siteName`, `clientName`, and `user` are requested; any other lookup fields (userId, username, machine/site lookups) are ignored. (lib/services/reports.ts:24-27)
+
+## Pairing logic
+- `pairLogsByDay` expects each log to expose `fields.type` (`'IN'|'OUT'`), `fields.timestamp` (ISO string), optional `fields.date` (YYYY-MM-DD), and optional `fields.siteName` / `fields.clientName`. (lib/reports/pair.ts:4-19)
+- Date partitioning prioritizes the explicit `{date}` field and falls back to `new Date(timestamp)` without JST correction, implying the Airtable `{date}` must already be day-shifted if needed. (lib/reports/pair.ts:28-61)
+- Duration is computed from matching IN/OUT timestamps (minutes), using the IN record’s `siteName`/`clientName` as the label. (lib/reports/pair.ts:86-128)
+
+## Contrast with calendar utilities
+- The shared Airtable helper normalizes logs by reading multiple lookup columns such as `userId`, `username`, and machine/site lookups, covering cases where the `{user}` link is blank. (lib/airtable/logs.ts:240-305)
+- Calendar APIs therefore do not require the `{user}` link to be populated, unlike `/reports`.

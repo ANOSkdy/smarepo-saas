@@ -1,0 +1,193 @@
+# Grep snippets for reports data sources
+
+## filterByFormula
+    lib/airtable/projects.ts:115:      .select({ filterByFormula: filterFormula, fields: ['name'] })
+    lib/airtable/projects.ts:149:  const filterByFormula = buildFilterFormula(params);
+    lib/airtable/projects.ts:156:        filterByFormula,
+    lib/airtable/projects.ts:189:        filterByFormula: filter,
+    lib/airtable/logs.ts:230:  const filterByFormula = `AND(NOT(IS_BEFORE({${LOG_FIELDS.timestamp}}, '${startIso}')), IS_BEFORE({${LOG_FIELDS.timestamp}}, '${endIso}'))`;
+    lib/airtable/logs.ts:235:        filterByFormula,
+    lib/services/aggregation/workReport.ts:211:  const filterByFormula = `AND(OR({${LOG_FIELDS.type}}='IN',{${LOG_FIELDS.type}}='OUT'),IS_AFTER({${LOG_FIELDS.timestamp}}, '${startUtcIso}'),IS_BEFORE({${LOG_FIELDS.timestamp}}, '${endUtcIso}'))`;
+    lib/services/aggregation/workReport.ts:216:        filterByFormula,
+    lib/services/reports.ts:17:    .select({ filterByFormula: `{name} = "${escapedUserName}"`, maxRecords: 1 })
+    lib/services/reports.ts:25:      filterByFormula: `FIND("${userId}", ARRAYJOIN({user}))`,
+
+## year|month|day
+    lib/reports/pair.ts:14:  year: number;
+    lib/reports/pair.ts:15:  month: number;
+    lib/reports/pair.ts:16:  day: number;
+    lib/reports/pair.ts:24:  year: number;
+    lib/reports/pair.ts:25:  month: number;
+    lib/reports/pair.ts:26:  day: number;
+    lib/reports/pair.ts:33:    const year = Number.parseInt(yearStr ?? '', 10);
+    lib/reports/pair.ts:34:    const month = Number.parseInt(monthStr ?? '', 10);
+    lib/reports/pair.ts:35:    const day = Number.parseInt(dayStr ?? '', 10);
+    lib/reports/pair.ts:36:    if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)) {
+    lib/reports/pair.ts:37:      const key = `${year.toString().padStart(4, '0')}-${month
+    lib/reports/pair.ts:39:        .padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+    lib/reports/pair.ts:40:      return { key, year, month, day };
+    lib/reports/pair.ts:52:  const year = date.getUTCFullYear();
+    lib/reports/pair.ts:53:  const month = date.getUTCMonth() + 1;
+    lib/reports/pair.ts:54:  const day = date.getUTCDate();
+    lib/reports/pair.ts:55:  const key = `${year.toString().padStart(4, '0')}-${month
+    lib/reports/pair.ts:57:    .padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+    lib/reports/pair.ts:58:  return { key, year, month, day };
+    lib/reports/pair.ts:93:    const { key, year, month, day } = dateParts;
+    lib/reports/pair.ts:125:      year,
+    lib/reports/pair.ts:126:      month,
+    lib/reports/pair.ts:127:      day,
+    lib/services/reports.ts:4:type SortKey = 'year' | 'month' | 'day' | 'siteName';
+    app/reports/page.tsx:7:type SortKey = 'year' | 'month' | 'day' | 'siteName';
+    app/reports/page.tsx:68:    sortParam === 'year' || sortParam === 'month' || sortParam === 'day' || sortParam === 'siteName'
+    app/reports/page.tsx:81:    year: '年',
+    app/reports/page.tsx:82:    month: '月',
+    app/reports/page.tsx:83:    day: '日',
+    app/reports/page.tsx:132:                {(['year', 'month', 'day', 'siteName'] as const).map((field) => (
+    app/reports/page.tsx:163:                  <tr key={`${row.year}-${row.month}-${row.day}-${index}`} className="odd:bg-white even:bg-gray-50">
+    app/reports/page.tsx:164:                    <td className="px-4 py-3">{row.year}</td>
+    app/reports/page.tsx:165:                    <td className="px-4 py-3">{row.month}</td>
+    app/reports/page.tsx:166:                    <td className="px-4 py-3">{row.day}</td>
+    app/reports/components/ResultsTable.tsx:136:        year: String(filters.year),
+    app/reports/components/ResultsTable.tsx:137:        month: String(filters.month),
+    app/reports/components/DownloadCsvButton.tsx:22:        year: String(filters.year),
+    app/reports/components/DownloadCsvButton.tsx:23:        month: String(filters.month),
+    app/reports/components/DownloadCsvButton.tsx:59:      const month = String(filters.month).padStart(2, '0');
+    app/reports/components/DownloadCsvButton.tsx:60:      link.download = `reports-${filters.year}-${month}.csv`;
+    app/reports/components/ActionBar.tsx:17:  const monthLabel = String(params.month).padStart(2, '0');
+    app/reports/components/ActionBar.tsx:41:    triggerDownload(blob, `report-${params.year}${monthLabel}.xlsx`);
+    app/reports/components/ActionBar.tsx:55:    triggerDownload(blob, `report-${params.year}${monthLabel}.pdf`);
+    app/reports/components/Filters.tsx:6:  year: number;
+    app/reports/components/Filters.tsx:7:  month: number;
+    app/reports/components/Filters.tsx:27:function formatMonth({ year, month }: { year: number; month: number }): string {
+    app/reports/components/Filters.tsx:28:  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}`;
+    app/reports/components/Filters.tsx:44:        <label className="text-sm font-medium text-muted-foreground" htmlFor="month">
+    app/reports/components/Filters.tsx:48:          id="month"
+    app/reports/components/Filters.tsx:49:          type="month"
+    app/reports/components/Filters.tsx:54:              onChange({ ...value, year: nextYear, month: nextMonth });
+
+## userId|username|name
+    lib/services/reports.ts:11:  userName: string,
+    lib/services/reports.ts:15:  const escapedUserName = escapeFormulaValue(userName);
+    lib/services/reports.ts:17:    .select({ filterByFormula: `{name} = "${escapedUserName}"`, maxRecords: 1 })
+    lib/services/reports.ts:22:  const userId = userRec.id;
+    lib/services/reports.ts:25:      filterByFormula: `FIND("${userId}", ARRAYJOIN({user}))`,
+    app/reports/page.tsx:13:    .select({ fields: ['name'], sort: [{ field: 'name', direction: 'asc' }] })
+    app/reports/page.tsx:15:  const names = new Set<string>();
+    app/reports/page.tsx:17:    const name = typeof record.fields.name === 'string' ? record.fields.name : null;
+    app/reports/page.tsx:18:    if (name) {
+    app/reports/page.tsx:19:      names.add(name);
+    app/reports/page.tsx:22:  return Array.from(names).sort((a, b) => a.localeCompare(b, 'ja'));
+    app/reports/page.tsx:26:  userName: string,
+    app/reports/page.tsx:30:  return getReportRowsByUserName(userName, sort, order ?? 'asc');
+    app/reports/page.tsx:48:  userName: string,
+    app/reports/page.tsx:53:  if (userName) {
+    app/reports/page.tsx:54:    params.set('userName', userName);
+    app/reports/page.tsx:64:  const userName = toSingleValue(searchParams.userName).trim();
+    app/reports/page.tsx:73:  const rows = userName ? await loadRows(userName, sort || undefined, order) : [];
+    app/reports/page.tsx:96:          <label htmlFor="userName" className="text-sm font-medium text-gray-700">
+    app/reports/page.tsx:100:            id="userName"
+    app/reports/page.tsx:101:            name="userName"
+    app/reports/page.tsx:102:            defaultValue={userName}
+    app/reports/page.tsx:104:            aria-describedby="userName-helper"
+    app/reports/page.tsx:107:            {users.map((name) => (
+    app/reports/page.tsx:108:              <option key={name} value={name}>
+    app/reports/page.tsx:109:                {name}
+    app/reports/page.tsx:113:          <span id="userName-helper" className="mt-1 text-xs text-gray-500">
+    app/reports/page.tsx:117:        <input type="hidden" name="sort" value={sort} />
+    app/reports/page.tsx:118:        <input type="hidden" name="order" value={order} />
+    app/reports/page.tsx:127:      {userName && (
+    app/reports/page.tsx:137:                        href={createSortLink(field, userName, sort, order)}
+    app/reports/components/ResultsTable.tsx:9:  username: string;
+    app/reports/components/ResultsTable.tsx:10:  sitename: string;
+    app/reports/components/ResultsTable.tsx:11:  machinename: string;
+    app/reports/components/ResultsTable.tsx:79:              <td className="px-4 py-3 text-sm text-foreground">{record.username}</td>
+    app/reports/components/ResultsTable.tsx:80:              <td className="px-4 py-3 text-sm text-foreground">{record.sitename}</td>
+    app/reports/components/ResultsTable.tsx:81:              <td className="px-4 py-3 text-sm text-foreground">{record.machinename}</td>
+    app/reports/components/ResultsTable.tsx:125:      sitenames: unique(records.map((record) => record.sitename)),
+    app/reports/components/ResultsTable.tsx:126:      usernames: unique(records.map((record) => record.username)),
+    app/reports/components/ResultsTable.tsx:127:      machinenames: unique(records.map((record) => record.machinename)),
+    app/reports/components/ResultsTable.tsx:139:      if (filters.sitename) params.set('sitename', filters.sitename);
+    app/reports/components/ResultsTable.tsx:140:      if (filters.username) params.set('username', filters.username);
+    app/reports/components/ResultsTable.tsx:141:      if (filters.machinename) params.set('machinename', filters.machinename);
+    app/reports/components/DownloadCsvButton.tsx:25:      if (filters.sitename) params.set('sitename', filters.sitename);
+    app/reports/components/DownloadCsvButton.tsx:26:      if (filters.username) params.set('username', filters.username);
+    app/reports/components/DownloadCsvButton.tsx:27:      if (filters.machinename) params.set('machinename', filters.machinename);
+    app/reports/components/DownloadCsvButton.tsx:39:        'sitename',
+    app/reports/components/DownloadCsvButton.tsx:40:        'username',
+    app/reports/components/DownloadCsvButton.tsx:41:        'machinename',
+    app/reports/components/DownloadCsvButton.tsx:47:        record.sitename,
+    app/reports/components/DownloadCsvButton.tsx:48:        record.username,
+    app/reports/components/DownloadCsvButton.tsx:49:        record.machinename,
+    app/reports/components/ActionBar.tsx:19:  const triggerDownload = (blob: Blob, filename: string) => {
+    app/reports/components/ActionBar.tsx:23:    link.download = filename;
+    app/reports/components/Filters.tsx:8:  sitename?: string;
+    app/reports/components/Filters.tsx:9:  username?: string;
+    app/reports/components/Filters.tsx:10:  machinename?: string;
+    app/reports/components/Filters.tsx:14:  sitenames: string[];
+    app/reports/components/Filters.tsx:15:  usernames: string[];
+    app/reports/components/Filters.tsx:16:  machinenames: string[];
+    app/reports/components/Filters.tsx:63:        <label className="text-sm font-medium text-muted-foreground" htmlFor="sitename">
+    app/reports/components/Filters.tsx:67:          id="sitename"
+    app/reports/components/Filters.tsx:69:          list="report-sitenames"
+    app/reports/components/Filters.tsx:70:          value={value.sitename ?? ''}
+    app/reports/components/Filters.tsx:72:            onChange({ ...value, sitename: event.target.value || undefined })
+    app/reports/components/Filters.tsx:77:          aria-describedby="sitename-hint"
+    app/reports/components/Filters.tsx:79:        <datalist id="report-sitenames">
+    app/reports/components/Filters.tsx:80:          {options.sitenames.map((name) => (
+    app/reports/components/Filters.tsx:81:            <option key={name} value={name} />
+    app/reports/components/Filters.tsx:84:        <span id="sitename-hint" className="sr-only">
+    app/reports/components/Filters.tsx:89:        <label className="text-sm font-medium text-muted-foreground" htmlFor="username">
+    app/reports/components/Filters.tsx:93:          id="username"
+    app/reports/components/Filters.tsx:95:          list="report-usernames"
+    app/reports/components/Filters.tsx:96:          value={value.username ?? ''}
+    app/reports/components/Filters.tsx:98:            onChange({ ...value, username: event.target.value || undefined })
+    app/reports/components/Filters.tsx:103:          aria-describedby="username-hint"
+    app/reports/components/Filters.tsx:105:        <datalist id="report-usernames">
+    app/reports/components/Filters.tsx:106:          {options.usernames.map((name) => (
+    app/reports/components/Filters.tsx:107:            <option key={name} value={name} />
+    app/reports/components/Filters.tsx:110:        <span id="username-hint" className="sr-only">
+    app/reports/components/Filters.tsx:115:        <label className="text-sm font-medium text-muted-foreground" htmlFor="machinename">
+    app/reports/components/Filters.tsx:119:          id="machinename"
+    app/reports/components/Filters.tsx:121:          list="report-machinenames"
+    app/reports/components/Filters.tsx:122:          value={value.machinename ?? ''}
+    app/reports/components/Filters.tsx:124:            onChange({ ...value, machinename: event.target.value || undefined })
+    app/reports/components/Filters.tsx:129:          aria-describedby="machinename-hint"
+    app/reports/components/Filters.tsx:131:        <datalist id="report-machinenames">
+    app/reports/components/Filters.tsx:132:          {options.machinenames.map((name) => (
+    app/reports/components/Filters.tsx:133:            <option key={name} value={name} />
+    app/reports/components/Filters.tsx:136:        <span id="machinename-hint" className="sr-only">
+
+## site|work
+    lib/services/reports.ts:4:type SortKey = 'year' | 'month' | 'day' | 'siteName';
+    lib/services/reports.ts:26:      fields: ['type', 'timestamp', 'date', 'siteName', 'clientName', 'user'],
+    lib/reports/pair.ts:7:    siteName?: string;
+    lib/reports/pair.ts:17:  siteName: string;
+    lib/reports/pair.ts:121:    const siteName = inRecord.fields.siteName ?? record.fields.siteName ?? '';
+    lib/reports/pair.ts:128:      siteName,
+    app/reports/page.tsx:7:type SortKey = 'year' | 'month' | 'day' | 'siteName';
+    app/reports/page.tsx:68:    sortParam === 'year' || sortParam === 'month' || sortParam === 'day' || sortParam === 'siteName'
+    app/reports/page.tsx:84:    siteName: '現場名',
+    app/reports/page.tsx:132:                {(['year', 'month', 'day', 'siteName'] as const).map((field) => (
+    app/reports/page.tsx:167:                    <td className="px-4 py-3">{row.siteName}</td>
+    app/reports/components/ResultsTable.tsx:10:  sitename: string;
+    app/reports/components/ResultsTable.tsx:12:  workdescription: string;
+    app/reports/components/ResultsTable.tsx:80:              <td className="px-4 py-3 text-sm text-foreground">{record.sitename}</td>
+    app/reports/components/ResultsTable.tsx:82:              <td className="px-4 py-3 text-sm text-foreground">{record.workdescription}</td>
+    app/reports/components/ResultsTable.tsx:125:      sitenames: unique(records.map((record) => record.sitename)),
+    app/reports/components/ResultsTable.tsx:139:      if (filters.sitename) params.set('sitename', filters.sitename);
+    app/reports/components/DownloadCsvButton.tsx:25:      if (filters.sitename) params.set('sitename', filters.sitename);
+    app/reports/components/DownloadCsvButton.tsx:39:        'sitename',
+    app/reports/components/DownloadCsvButton.tsx:42:        'workdescription',
+    app/reports/components/DownloadCsvButton.tsx:47:        record.sitename,
+    app/reports/components/DownloadCsvButton.tsx:50:        record.workdescription,
+    app/reports/components/Filters.tsx:8:  sitename?: string;
+    app/reports/components/Filters.tsx:14:  sitenames: string[];
+    app/reports/components/Filters.tsx:63:        <label className="text-sm font-medium text-muted-foreground" htmlFor="sitename">
+    app/reports/components/Filters.tsx:67:          id="sitename"
+    app/reports/components/Filters.tsx:69:          list="report-sitenames"
+    app/reports/components/Filters.tsx:70:          value={value.sitename ?? ''}
+    app/reports/components/Filters.tsx:72:            onChange({ ...value, sitename: event.target.value || undefined })
+    app/reports/components/Filters.tsx:77:          aria-describedby="sitename-hint"
+    app/reports/components/Filters.tsx:79:        <datalist id="report-sitenames">
+    app/reports/components/Filters.tsx:80:          {options.sitenames.map((name) => (
+    app/reports/components/Filters.tsx:84:        <span id="sitename-hint" className="sr-only">

@@ -1,0 +1,6 @@
+# /reports timezone handling audit
+
+- `pairLogsByDay` parses `record.fields.date` verbatim and only falls back to `new Date(timestamp)` with UTC getters; there is no `JST_OFFSET` adjustment. (lib/reports/pair.ts:28-61)
+- When `date` is missing, the UTC conversion can shift late-night JST punches backward by one day (e.g., 2024-11-01 01:00 JST → 2024-10-31 UTC). (lib/reports/pair.ts:52-58)
+- Calendar utilities explicitly convert every timestamp with `JST_OFFSET` before grouping (`formatJstDate`, `toJstParts`). (lib/airtable/logs.ts:272-363)
+- `/reports` queries Airtable without a date window, so timezone mismatches do not hide rows entirely but can mis-label the `year/month/day` columns when only the UTC fallback is used.
