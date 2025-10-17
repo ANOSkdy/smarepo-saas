@@ -1,8 +1,8 @@
 import Link from 'next/link';
-import { headers } from 'next/headers';
 
 import { usersTable } from '@/lib/airtable';
 import type { ReportRow } from '@/lib/reports/pair';
+import { getReportRowsByUserName } from '@/lib/services/reports';
 
 type SortKey = 'year' | 'month' | 'day' | 'siteName';
 
@@ -22,33 +22,12 @@ async function fetchUsers(): Promise<string[]> {
   return Array.from(names).sort((a, b) => a.localeCompare(b, 'ja'));
 }
 
-async function fetchReport(
+async function loadRows(
   userName: string,
   sort?: SortKey,
   order?: 'asc' | 'desc'
 ): Promise<ReportRow[]> {
-  const h = await headers();
-  const proto = process.env.APP_BASE_URL ? undefined : h.get('x-forwarded-proto') ?? 'https';
-  const hostHeader = h.get('x-forwarded-host') ?? h.get('host') ?? '';
-
-  const base =
-    process.env.APP_BASE_URL?.replace(/\/$/, '') ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') ||
-    (hostHeader ? `${proto}://${hostHeader}` : '') ||
-    'http://127.0.0.1:3000';
-
-  const qs = new URLSearchParams();
-  qs.set('userName', userName);
-  if (sort) qs.set('sort', sort);
-  if (order) qs.set('order', order);
-
-  const url = `${base}/api/reports?${qs.toString()}`;
-  const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) {
-    return [];
-  }
-  const data = (await response.json()) as { rows?: ReportRow[] };
-  return Array.isArray(data.rows) ? data.rows : [];
+  return getReportRowsByUserName(userName, sort, order ?? 'asc');
 }
 
 function formatMinutes(minutes: number): string {
@@ -91,7 +70,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
       : '';
   const order: 'asc' | 'desc' = orderParam === 'desc' ? 'desc' : 'asc';
 
-  const rows = userName ? await fetchReport(userName, sort || undefined, order) : [];
+  const rows = userName ? await loadRows(userName, sort || undefined, order) : [];
 
   const sortLabel = (field: SortKey) => {
     if (sort !== field) return '↕';
