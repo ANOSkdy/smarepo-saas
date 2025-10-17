@@ -7,6 +7,12 @@ import {
   type LogRec,
   type SessionRow,
 } from '@/lib/reporting/pairLogsToSessions';
+import {
+  FIELD_ALIASES,
+  buildUserIdFilter,
+  buildUserNameFilter,
+  firstField,
+} from '@/lib/airtable/aliases';
 
 export const runtime = 'nodejs';
 
@@ -57,57 +63,180 @@ async function fetchUsers(): Promise<UserOption[]> {
     .filter((user): user is UserOption => Boolean(user.name));
 }
 
-function mapLogRecord(record: AirtableRecord<FieldSet>): LogRec | null {
-  const timestamp = record.get('timestamp');
-  const type = record.get('type');
-  if (typeof timestamp !== 'string' || (type !== 'IN' && type !== 'OUT')) {
-    return null;
-  }
+const LOG_SELECT_FIELDS = Array.from(
+  new Set([
+    ...FIELD_ALIASES.timestamp,
+    ...FIELD_ALIASES.type,
+    ...FIELD_ALIASES.siteName,
+    ...FIELD_ALIASES.userLink,
+    ...FIELD_ALIASES.userName,
+    'workDescription',
+  ]),
+);
 
-  const siteNameRaw = record.get('siteName');
-  const siteName =
-    typeof siteNameRaw === 'string'
-      ? siteNameRaw
-      : Array.isArray(siteNameRaw)
-        ? siteNameRaw.join(', ')
-        : undefined;
-  const workDescriptionRaw = record.get('workDescription');
-  const workDescription =
-    typeof workDescriptionRaw === 'string' ? workDescriptionRaw : undefined;
-
-  const normalizedType = type as 'IN' | 'OUT';
-
-  return {
-    id: record.id,
-    fields: {
-      timestamp,
-      type: normalizedType,
-      siteName,
-      workDescription,
-    },
-  };
+function escapeForFormula(value: string): string {
+  return value.replace(/'/g, "\\'");
 }
 
-async function fetchLogsByUserRecId(userRecId: string, days: number): Promise<LogRec[]> {
+async function fetchLogsRobust(
+  userRecId: string,
+  userName: string,
+  days: number,
+): Promise<LogRec[]> {
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  const filter = `AND(
-    FIND('${userRecId}', ARRAYJOIN({user})),
-    IS_AFTER({timestamp}, '${sinceIso}')
-  )`;
   const table = base(LOGS_TABLE) as Table<FieldSet>;
-  const records = await withRetry(() =>
-    table
-      .select({
-        filterByFormula: filter,
-        sort: [{ field: 'timestamp', direction: 'asc' }],
-        maxRecords: 5000,
-        fields: ['timestamp', 'type', 'siteName', 'workDescription'],
-      })
-      .all(),
-  );
 
+  async function trySelect(filter: string, sortField: string) {
+    try {
+      return await withRetry(() =>
+        table
+          .select({
+            filterByFormula: filter,
+            sort: [{ field: sortField, direction: 'asc' }],
+            maxRecords: 5000,
+            fields: LOG_SELECT_FIELDS,
+          })
+          .all(),
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  // 1) userリンク名を推測してID検索
+  for (const userField of FIELD_ALIASES.userLink) {
+    for (const timestampField of FIELD_ALIASES.timestamp) {
+      const filter = `AND(${buildUserIdFilter(
+        userRecId,
+        userField,
+      )}, IS_AFTER({${timestampField}}, '${sinceIso}'))`;
+      const records = await trySelect(filter, timestampField);
+      if (records?.length) {
+        const mapped = mapLogs(records);
+        if (mapped.length) {
+          return mapped;
+        }
+      }
+    }
+  }
+
+  // 2) user名lookupで検索
+  if (userName) {
+    const safeName = escapeForFormula(userName);
+    for (const nameField of FIELD_ALIASES.userName) {
+      for (const timestampField of FIELD_ALIASES.timestamp) {
+        const filter = `AND(${buildUserNameFilter(
+          safeName,
+          nameField,
+        )}, IS_AFTER({${timestampField}}, '${sinceIso}'))`;
+        const records = await trySelect(filter, timestampField);
+        if (records?.length) {
+          const mapped = mapLogs(records);
+          if (mapped.length) {
+            return mapped;
+          }
+        }
+      }
+    }
+  }
+
+  // 3) 期間のみ取得→サーバ側でリンクID/氏名で絞り込み
+  for (const timestampField of FIELD_ALIASES.timestamp) {
+    const filter = `IS_AFTER({${timestampField}}, '${sinceIso}')`;
+    const records = await trySelect(filter, timestampField);
+    if (!records?.length) {
+      continue;
+    }
+
+    const filtered = records.filter((record) => {
+      const linkHit = FIELD_ALIASES.userLink.some((field) => {
+        const value = record.get(field);
+        if (Array.isArray(value)) {
+          return value.includes(userRecId);
+        }
+        if (typeof value === 'string') {
+          return value === userRecId;
+        }
+        return false;
+      });
+
+      const nameHit = userName
+        ? FIELD_ALIASES.userName.some((field) => {
+            const value = record.get(field);
+            if (Array.isArray(value)) {
+              return value.includes(userName);
+            }
+            if (typeof value === 'string') {
+              const candidates = value
+                .split(',')
+                .map((item) => item.trim())
+                .filter(Boolean);
+              return candidates.includes(userName) || value === userName;
+            }
+            return false;
+          })
+        : false;
+
+      return linkHit || nameHit;
+    });
+
+    if (filtered.length) {
+      const mapped = mapLogs(filtered);
+      if (mapped.length) {
+        return mapped;
+      }
+    }
+  }
+
+  return [];
+}
+
+function mapLogs(records: AirtableRecord<FieldSet>[]): LogRec[] {
   return records
-    .map((record) => mapLogRecord(record))
+    .map((record) => {
+      const getter = (key: string) => record.get(key);
+      const timestampRaw = firstField(getter, FIELD_ALIASES.timestamp);
+      const rawType = firstField(getter, FIELD_ALIASES.type);
+      if (!timestampRaw || !rawType) {
+        return null;
+      }
+
+      const timestamp =
+        typeof timestampRaw === 'string'
+          ? timestampRaw
+          : timestampRaw instanceof Date
+            ? timestampRaw.toISOString()
+            : String(timestampRaw);
+
+      const normalizedType = String(rawType).toUpperCase();
+      if (normalizedType !== 'IN' && normalizedType !== 'OUT') {
+        return null;
+      }
+
+      const siteNameRaw = firstField(getter, FIELD_ALIASES.siteName);
+      let siteName: string | undefined;
+      if (Array.isArray(siteNameRaw)) {
+        siteName = siteNameRaw.join(', ');
+      } else if (typeof siteNameRaw === 'string') {
+        siteName = siteNameRaw;
+      } else if (siteNameRaw != null) {
+        siteName = String(siteNameRaw);
+      }
+
+      const workDescriptionRaw = record.get('workDescription');
+      const workDescription =
+        typeof workDescriptionRaw === 'string' ? workDescriptionRaw : undefined;
+
+      return {
+        id: record.id,
+        fields: {
+          timestamp,
+          type: normalizedType as 'IN' | 'OUT',
+          siteName,
+          workDescription,
+        },
+      };
+    })
     .filter((log): log is LogRec => Boolean(log));
 }
 
@@ -128,7 +257,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
 
   let rows: SessionRow[] = [];
   if (selectedUser) {
-    const logs = await fetchLogsByUserRecId(selectedUser, lookbackDays);
+    const selectedUserName =
+      users.find((user) => user.id === selectedUser)?.name ??
+      session?.user?.name ??
+      '';
+    const logs = await fetchLogsRobust(selectedUser, selectedUserName, lookbackDays);
     rows = pairLogsToSessions(logs);
   }
 
