@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { headers } from 'next/headers';
 
 import { usersTable } from '@/lib/airtable';
 import type { ReportRow } from '@/lib/reports/pair';
@@ -21,34 +22,28 @@ async function fetchUsers(): Promise<string[]> {
   return Array.from(names).sort((a, b) => a.localeCompare(b, 'ja'));
 }
 
-function resolveBaseUrl(): string {
-  if (process.env.APP_BASE_URL) {
-    return process.env.APP_BASE_URL;
-  }
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL;
-  }
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  return 'http://localhost:3000';
-}
-
 async function fetchReport(
   userName: string,
   sort?: SortKey,
   order?: 'asc' | 'desc'
 ): Promise<ReportRow[]> {
-  const baseUrl = resolveBaseUrl();
-  const url = new URL('/api/reports', baseUrl);
-  url.searchParams.set('userName', userName);
-  if (sort) {
-    url.searchParams.set('sort', sort);
-  }
-  if (order) {
-    url.searchParams.set('order', order);
-  }
-  const response = await fetch(url.toString(), { cache: 'no-store' });
+  const h = await headers();
+  const proto = process.env.APP_BASE_URL ? undefined : h.get('x-forwarded-proto') ?? 'https';
+  const hostHeader = h.get('x-forwarded-host') ?? h.get('host') ?? '';
+
+  const base =
+    process.env.APP_BASE_URL?.replace(/\/$/, '') ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') ||
+    (hostHeader ? `${proto}://${hostHeader}` : '') ||
+    'http://127.0.0.1:3000';
+
+  const qs = new URLSearchParams();
+  qs.set('userName', userName);
+  if (sort) qs.set('sort', sort);
+  if (order) qs.set('order', order);
+
+  const url = `${base}/api/reports?${qs.toString()}`;
+  const response = await fetch(url, { cache: 'no-store' });
   if (!response.ok) {
     return [];
   }
