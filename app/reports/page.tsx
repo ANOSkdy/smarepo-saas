@@ -192,54 +192,62 @@ async function fetchLogsRobust(
 }
 
 // Airtableのselect().all()は readonly 配列(Records<FieldSet>)を返すため、
-// 受け口を readonly で受けることで型エラーを解消する（最小変更）。
+// 受け口を readonly で受けつつ、必須フィールド欠落行はスキップして LogRec[] のみ返す。
 function mapLogs(records: readonly AirtableRecord<FieldSet>[]): LogRec[] {
-  return records
-    .map((record) => {
-      const getter = (key: string) => record.get(key);
-      const timestampRaw = firstField(getter, FIELD_ALIASES.timestamp);
-      const rawType = firstField(getter, FIELD_ALIASES.type);
-      if (!timestampRaw || !rawType) {
-        return null;
-      }
+  const logs: LogRec[] = [];
+  for (const record of records) {
+    const getValue = (key: string) => record.get(key);
+    const timestampRaw = firstField<unknown>(getValue, FIELD_ALIASES.timestamp);
+    const typeRaw = firstField<unknown>(getValue, FIELD_ALIASES.type);
 
-      const timestamp =
-        typeof timestampRaw === 'string'
-          ? timestampRaw
-          : timestampRaw instanceof Date
-            ? timestampRaw.toISOString()
-            : String(timestampRaw);
+    if (!timestampRaw || typeRaw == null) {
+      continue;
+    }
 
-      const normalizedType = String(rawType).toUpperCase();
-      if (normalizedType !== 'IN' && normalizedType !== 'OUT') {
-        return null;
-      }
+    const normalizedType = String(typeRaw).toUpperCase();
+    if (normalizedType !== 'IN' && normalizedType !== 'OUT') {
+      continue;
+    }
 
-      const siteNameRaw = firstField(getter, FIELD_ALIASES.siteName);
-      let siteName: string | undefined;
-      if (Array.isArray(siteNameRaw)) {
-        siteName = siteNameRaw.join(', ');
-      } else if (typeof siteNameRaw === 'string') {
-        siteName = siteNameRaw;
-      } else if (siteNameRaw != null) {
-        siteName = String(siteNameRaw);
-      }
+    let timestamp: string;
+    if (typeof timestampRaw === 'string') {
+      timestamp = timestampRaw;
+    } else if (timestampRaw instanceof Date) {
+      timestamp = timestampRaw.toISOString();
+    } else {
+      timestamp = String(timestampRaw);
+    }
 
-      const workDescriptionRaw = record.get('workDescription');
-      const workDescription =
-        typeof workDescriptionRaw === 'string' ? workDescriptionRaw : undefined;
+    if (!timestamp) {
+      continue;
+    }
 
-      return {
-        id: record.id,
-        fields: {
-          timestamp,
-          type: normalizedType as 'IN' | 'OUT',
-          siteName,
-          workDescription,
-        },
-      };
-    })
-    .filter((log): log is LogRec => Boolean(log));
+    const siteNameRaw = firstField<unknown>(getValue, FIELD_ALIASES.siteName);
+    let siteName = '';
+    if (Array.isArray(siteNameRaw)) {
+      siteName = siteNameRaw.join(', ');
+    } else if (typeof siteNameRaw === 'string') {
+      siteName = siteNameRaw;
+    } else if (siteNameRaw != null) {
+      siteName = String(siteNameRaw);
+    }
+
+    const workDescriptionRaw = record.get('workDescription');
+    const workDescription =
+      typeof workDescriptionRaw === 'string' ? workDescriptionRaw : undefined;
+
+    logs.push({
+      id: record.id,
+      fields: {
+        timestamp,
+        type: normalizedType as 'IN' | 'OUT',
+        siteName,
+        workDescription,
+      },
+    });
+  }
+
+  return logs;
 }
 
 export default async function ReportsPage({ searchParams }: { searchParams: SearchParams }) {
