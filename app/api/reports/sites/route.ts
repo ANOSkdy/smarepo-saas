@@ -3,6 +3,7 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { logsTable, sitesTable, usersTable } from '@/lib/airtable';
+import { resolveUserIdentity, resolveUserKey } from '@/lib/services/userIdentity';
 import type { LogFields, SiteFields } from '@/types';
 
 const DOW = ['日', '月', '火', '水', '木', '金', '土'] as const;
@@ -73,24 +74,14 @@ export async function GET(req: NextRequest) {
     .select({
       filterByFormula,
       pageSize: 100,
-      fields: [
-        'date',
-        'timestamp',
-        'type',
-        'user',
-        'userId',
-        'workDescription',
-        'site',
-        'siteName',
-      ],
     })
     .all();
 
   const userIds = new Set<string>();
   for (const record of logRecords) {
-    const userField = record.fields.user;
-    if (Array.isArray(userField) && userField[0]) {
-      userIds.add(userField[0]);
+    const identity = resolveUserIdentity(record);
+    if (identity.userRecId) {
+      userIds.add(identity.userRecId);
     }
   }
 
@@ -135,15 +126,18 @@ export async function GET(req: NextRequest) {
   type LogRecord = (typeof filteredLogs)[number];
 
   for (const record of filteredLogs) {
-    const fields = record.fields as LogFields & {
-      userId?: string;
-    };
-    const userRecId = Array.isArray(fields.user) ? fields.user[0] : undefined;
-    const userName = (userRecId && usersById.get(userRecId)) || fields.userId || '不明ユーザー';
+    const fields = record.fields as LogFields;
+    const identity = resolveUserIdentity(record);
     const workDescription = fields.workDescription || '（未設定）';
-    const key = `${userRecId || userName}__${workDescription}`;
+    const userName =
+      (identity.userRecId && usersById.get(identity.userRecId)) ||
+      identity.displayName ||
+      identity.username ||
+      '不明ユーザー';
+    const userKey = resolveUserKey(record);
+    const key = `${userKey}__${workDescription}`;
     if (!columnMap.has(key)) {
-      columnMap.set(key, { key, userRecId, userName, workDescription });
+      columnMap.set(key, { key, userRecId: identity.userRecId, userName, workDescription });
     }
   }
 
@@ -157,17 +151,14 @@ export async function GET(req: NextRequest) {
   const groups = new Map<string, LogRecord[]>();
 
   for (const record of filteredLogs) {
-    const fields = record.fields as LogFields & {
-      userId?: string;
-    };
+    const fields = record.fields as LogFields;
     const date = fields.date;
     if (!date) {
       continue;
     }
-    const userRecId = Array.isArray(fields.user) ? fields.user[0] : undefined;
-    const userName = (userRecId && usersById.get(userRecId)) || fields.userId || '不明ユーザー';
     const workDescription = fields.workDescription || '（未設定）';
-    const columnKey = `${userRecId || userName}__${workDescription}`;
+    const userKey = resolveUserKey(record);
+    const columnKey = `${userKey}__${workDescription}`;
     const groupKey = `${date}|${columnKey}`;
     const queue = groups.get(groupKey) ?? [];
     queue.push(record);
