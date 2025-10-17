@@ -1,22 +1,45 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 
+// --- Normalize any Airtable/lookup/array/object value to string ---
+const asText = (value: unknown): string => {
+  if (value == null) return "";
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => asText(item))
+      .filter(Boolean)
+      .join(",");
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const candidate = record.name ?? record.label ?? record.text;
+    return candidate ? String(candidate) : "";
+  }
+  return String(value);
+};
+
 type SiteMaster = {
   id: string;
-  fields: {
-    name?: string;
-    client?: string; // 元請・代理人
+  fields?: {
+    name?: unknown;
+    client?: unknown; // 元請・代理人
     active?: boolean;
   };
+  name?: unknown;
+  client?: unknown;
+  clientName?: unknown;
 };
 
 type Session = {
   year?: number;
   month?: number;
   day?: number;
-  username?: string; // 従業員名
-  sitename?: string; // 現場名
-  workdescription?: string; // 業務内容
+  username?: unknown; // 従業員名
+  sitename?: unknown; // 現場名
+  siteName?: unknown;
+  workdescription?: unknown; // 業務内容
+  work?: unknown;
+  workName?: unknown;
   machineId?: string | number | null;
   machineName?: string | null;
   // フォールバック用（API差異対策）
@@ -110,47 +133,40 @@ export default function SitesWorkTab() {
   }, [monthData]);
 
   // セレクタ候補
-  const siteNames = useMemo(
-    () =>
-      Array.from(new Set((sites || []).map((s) => s.fields?.name).filter(Boolean))) as string[],
-    [sites]
-  );
-  const clients = useMemo(
-    () =>
-      Array.from(new Set((sites || []).map((s) => s.fields?.client).filter(Boolean))) as string[],
-    [sites]
-  );
-  const works = useMemo(
-    () =>
-      Array.from(new Set(allRows.map((r) => r.workdescription).filter(Boolean))) as string[],
-    [allRows]
-  );
-  const employees = useMemo(
-    () =>
-      Array.from(new Set(allRows.map((r) => r.username).filter(Boolean))) as string[],
-    [allRows]
-  );
-  const machines = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          allRows.map((r) => r.machineName || String(r.machineId || "")).filter((v) => !!v && v !== "undefined")
-        )
-      ) as string[],
-    [allRows]
-  );
+  const siteNames = useMemo(() => {
+    const vals = (sites || []).map((site) => asText(site.fields?.name ?? site.name));
+    return Array.from(new Set(vals.filter(Boolean)));
+  }, [sites]);
+  const clients = useMemo(() => {
+    const vals = (sites || []).map((site) => asText(site.fields?.client ?? site.client ?? site.clientName));
+    return Array.from(new Set(vals.filter(Boolean)));
+  }, [sites]);
+  const works = useMemo(() => {
+    const vals = allRows.map((row) => asText(row.workdescription ?? row.work ?? row.workName));
+    return Array.from(new Set(vals.filter(Boolean)));
+  }, [allRows]);
 
   // 1次フィルタ適用
   const primaryFiltered = useMemo(() => {
     if (!fSite || !fWork || !fClient) return [];
-    const siteOk = (row: Session) => row.sitename === fSite;
-    const workOk = (row: Session) => (row.workdescription || "") === fWork;
+    const siteOk = (row: Session) => asText(row.sitename ?? row.siteName) === fSite;
+    const workOk = (row: Session) => asText(row.workdescription ?? row.work ?? row.workName) === fWork;
     const clientOk = (row: Session) => {
-      const site = sites.find((s) => s.fields?.name === row.sitename);
-      return (site?.fields?.client || "") === fClient;
+      const site = sites.find((s) => asText(s.fields?.name ?? s.name) === asText(row.sitename ?? row.siteName));
+      return asText(site?.fields?.client ?? site?.client ?? site?.clientName) === fClient;
     };
     return allRows.filter((r) => siteOk(r) && workOk(r) && clientOk(r));
   }, [allRows, fSite, fWork, fClient, sites]);
+
+  // secondary filters' candidates must be built AFTER primary filter (per requirements)
+  const employees = useMemo(() => {
+    const vals = primaryFiltered.map((r) => asText(r.username));
+    return Array.from(new Set(vals.filter(Boolean)));
+  }, [primaryFiltered]);
+  const machines = useMemo(() => {
+    const vals = primaryFiltered.map((r) => asText(r.machineName ?? r.machineId));
+    return Array.from(new Set(vals.filter((v) => !!v && v !== "undefined" && v !== "null")));
+  }, [primaryFiltered]);
 
   // 2次フィルタ適用
   const finalRows = useMemo(() => {
@@ -159,9 +175,9 @@ export default function SitesWorkTab() {
       if (fYear && String(y) !== fYear) return false;
       if (fMonth && String(m) !== fMonth) return false;
       if (fDay && String(d) !== fDay) return false;
-      if (fEmployee && r.username !== fEmployee) return false;
+      if (fEmployee && asText(r.username) !== fEmployee) return false;
       if (fMachine) {
-        const mv = r.machineName || String(r.machineId || "");
+        const mv = asText(r.machineName ?? r.machineId);
         if (mv !== fMachine) return false;
       }
       return true;
@@ -171,10 +187,10 @@ export default function SitesWorkTab() {
   // 業務内容ごとに区切って表示
   const groupedByWork = useMemo(() => {
     const map = new Map<string, Session[]>();
-    for (const r of finalRows) {
-      const key = r.workdescription || "(未設定)";
+    for (const row of finalRows) {
+      const key = asText(row.workdescription ?? row.work ?? row.workName) || "(未設定)";
       const arr = map.get(key) || [];
-      arr.push(r);
+      arr.push(row);
       map.set(key, arr);
     }
     // 並び：年→月→日→従業員名
@@ -182,11 +198,13 @@ export default function SitesWorkTab() {
       arr.sort((a, b) => {
         const A = ymdFromSession(a);
         const B = ymdFromSession(b);
+        const nameA = asText(a.username);
+        const nameB = asText(b.username);
         return (
           (A.y ?? 0) - (B.y ?? 0) ||
           (A.m ?? 0) - (B.m ?? 0) ||
           (A.d ?? 0) - (B.d ?? 0) ||
-          (a.username || "").localeCompare(b.username || "")
+          nameA.localeCompare(nameB)
         );
       });
     }
@@ -298,9 +316,15 @@ export default function SitesWorkTab() {
             onChange={(e) => setFYear(e.target.value)}
           >
             <option value="">（すべて）</option>
-            {Array.from(new Set(finalRows.map((r) => String(ymdFromSession(r).y)).filter(Boolean))).map((y) => (
-              <option key={y} value={y}>
-                {y}
+            {Array.from(
+              new Set(
+                finalRows
+                  .map((r) => ymdFromSession(r).y)
+                  .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+              )
+            ).map((y) => (
+              <option key={y} value={String(y)}>
+                {String(y)}
               </option>
             ))}
           </select>
@@ -316,9 +340,15 @@ export default function SitesWorkTab() {
             onChange={(e) => setFMonth(e.target.value)}
           >
             <option value="">（すべて）</option>
-            {Array.from(new Set(finalRows.map((r) => String(ymdFromSession(r).m)).filter(Boolean))).map((m) => (
-              <option key={m} value={m}>
-                {m}
+            {Array.from(
+              new Set(
+                finalRows
+                  .map((r) => ymdFromSession(r).m)
+                  .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+              )
+            ).map((m) => (
+              <option key={m} value={String(m)}>
+                {String(m)}
               </option>
             ))}
           </select>
@@ -334,9 +364,15 @@ export default function SitesWorkTab() {
             onChange={(e) => setFDay(e.target.value)}
           >
             <option value="">（すべて）</option>
-            {Array.from(new Set(finalRows.map((r) => String(ymdFromSession(r).d)).filter(Boolean))).map((d) => (
-              <option key={d} value={d}>
-                {d}
+            {Array.from(
+              new Set(
+                finalRows
+                  .map((r) => ymdFromSession(r).d)
+                  .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+              )
+            ).map((d) => (
+              <option key={d} value={String(d)}>
+                {String(d)}
               </option>
             ))}
           </select>
@@ -406,7 +442,7 @@ export default function SitesWorkTab() {
                           <td className="px-3 py-2">{y ?? ""}</td>
                           <td className="px-3 py-2">{m ?? ""}</td>
                           <td className="px-3 py-2">{d ?? ""}</td>
-                          <td className="px-3 py-2">{r.username || ""}</td>
+                          <td className="px-3 py-2">{asText(r.username)}</td>
                         </tr>
                       );
                     })}
