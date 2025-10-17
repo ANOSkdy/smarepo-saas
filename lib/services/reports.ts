@@ -1,20 +1,26 @@
 import { logsTable, usersTable } from '@/lib/airtable';
+import {
+  LOG_FIELDS,
+  LOGS_FIELDS,
+  buildLookupContains,
+  buildUserFilterById,
+  buildUserFilterByName,
+  escapeAirtable,
+} from '@/lib/airtable/schema';
 import { pairLogsByDay, type LogRecord, type ReportRow } from '@/lib/reports/pair';
 
 type SortKey = 'year' | 'month' | 'day' | 'siteName';
 
-function escapeFormulaValue(value: string): string {
-  return value.replace(/"/g, '\\"');
-}
+const LOG_SELECT_FIELDS = ['type', 'timestamp', 'date', 'siteName', 'clientName', 'user'] as const;
 
 export async function getReportRowsByUserName(
   userName: string,
   sort?: SortKey,
   order: 'asc' | 'desc' = 'asc',
 ): Promise<ReportRow[]> {
-  const escapedUserName = escapeFormulaValue(userName);
+  const escapedUserName = escapeAirtable(userName);
   const users = await usersTable
-    .select({ filterByFormula: `{name} = "${escapedUserName}"`, maxRecords: 1 })
+    .select({ filterByFormula: `{name} = '${escapedUserName}'`, maxRecords: 1 })
     .firstPage();
   const userRec = users?.[0];
   if (!userRec) return [];
@@ -23,42 +29,59 @@ export async function getReportRowsByUserName(
   const filterParts = new Set<string>();
 
   const recordId = userRec.id;
-  filterParts.add(`FIND("${escapeFormulaValue(recordId)}", ARRAYJOIN({user}))`);
+  filterParts.add(`FIND('${escapeAirtable(recordId)}', ARRAYJOIN({${LOG_FIELDS.user}}))`);
 
-  const pushTextMatch = (fieldName: string, rawValue: unknown) => {
+  const pushEqualityFilter = (builder: (value: string) => string, rawValue: unknown) => {
     if (typeof rawValue !== 'string') return;
-    const normalized = rawValue.trim().toLowerCase();
-    if (!normalized) return;
-    const escaped = escapeFormulaValue(normalized);
-    filterParts.add(`LOWER({${fieldName}} & "") = "${escaped}"`);
+    const trimmed = rawValue.trim();
+    if (!trimmed) return;
+    filterParts.add(builder(trimmed));
   };
 
-  const pushLookupMatch = (fieldName: string, rawValue: unknown) => {
+  const pushLookupFilter = (fieldName: string, rawValue: unknown) => {
     if (typeof rawValue !== 'string') return;
-    const normalized = rawValue.trim().toLowerCase();
-    if (!normalized) return;
-    const escaped = escapeFormulaValue(normalized);
-    filterParts.add(`IFERROR(FIND("${escaped}", LOWER(CONCATENATE({${fieldName}}))), 0) > 0`);
+    const trimmed = rawValue.trim();
+    if (!trimmed) return;
+    filterParts.add(buildLookupContains(fieldName, trimmed));
   };
 
-  pushTextMatch('userId', userFields.userId);
-  pushTextMatch('username', userFields.username);
-  pushTextMatch('userName', userFields.name);
-  pushTextMatch('email', userFields.email);
+  pushEqualityFilter(buildUserFilterByName, userFields.name as string | undefined);
+  pushEqualityFilter(buildUserFilterById, userFields.userId as string | undefined);
 
-  pushLookupMatch('userName (from user)', userFields.name ?? userFields.username);
-  pushLookupMatch('name (from user)', userFields.name);
+  pushLookupFilter(LOGS_FIELDS.userNameLookup, userFields.name as string | undefined);
+  pushLookupFilter(LOGS_FIELDS.userIdLookup, userFields.userId as string | undefined);
 
   const filterExpressions = Array.from(filterParts);
   const filterByFormula =
     filterExpressions.length === 1 ? filterExpressions[0] : `OR(${filterExpressions.join(', ')})`;
 
+  const selectFields = [...LOG_SELECT_FIELDS];
+
   const logRecords = await logsTable
     .select({
       filterByFormula,
-      fields: ['type', 'timestamp', 'date', 'siteName', 'clientName', 'user'],
+      fields: selectFields,
     })
-    .all();
+    .all()
+    .catch((error) => {
+      const statusCode =
+        typeof error === 'object' && error !== null && 'statusCode' in error
+          ? (error as { statusCode?: number }).statusCode
+          : undefined;
+
+      if (statusCode === 422) {
+        console.error('reports.filter.invalid', {
+          formula: filterByFormula,
+          fields: LOG_SELECT_FIELDS,
+          error:
+            error instanceof Error
+              ? { name: error.name, message: error.message }
+              : error,
+        });
+      }
+
+      throw error;
+    });
 
   const paired = pairLogsByDay(
     logRecords.map<LogRecord>((record) => ({
