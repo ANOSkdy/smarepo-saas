@@ -79,7 +79,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-6">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold text-gray-900">レポート</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">個別集計</h1>
         <p className="text-sm text-gray-600">従業員ごとの IN/OUT ペアリングから稼働時間を算出します。</p>
       </header>
 
