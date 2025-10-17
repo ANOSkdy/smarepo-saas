@@ -108,9 +108,10 @@ function ymdFromSession(session: Session) {
 }
 
 export default function SitesWorkTab() {
-  const today = new Date();
-  const [year, setYear] = useState<number>(today.getFullYear());
-  const [month, setMonth] = useState<number>(today.getMonth() + 1);
+  const defaultYear = useMemo(() => new Date().getFullYear(), []);
+  const defaultMonth = useMemo(() => new Date().getMonth() + 1, []);
+  const [queryYear, setQueryYear] = useState<number>(defaultYear);
+  const [queryMonth, setQueryMonth] = useState<number>(defaultMonth);
 
   // マスタ
   const [sites, setSites] = useState<SiteMaster[]>([]);
@@ -142,7 +143,7 @@ export default function SitesWorkTab() {
       setSessionRows([]);
 
       try {
-        const params = new URLSearchParams({ year: String(year), month: String(month) });
+        const params = new URLSearchParams({ year: String(queryYear), month: String(queryMonth) });
 
         const [sitesRes, monthRes] = await Promise.all([
           fetch("/api/masters/sites", {
@@ -242,7 +243,29 @@ export default function SitesWorkTab() {
       aborted = true;
       controller.abort();
     };
-  }, [month, year]);
+  }, [queryMonth, queryYear]);
+
+  useEffect(() => {
+    const parsed = Number.parseInt(fYear, 10);
+    if (fYear && Number.isFinite(parsed) && parsed !== queryYear) {
+      setQueryYear(parsed);
+      return;
+    }
+    if (!fYear && queryYear !== defaultYear) {
+      setQueryYear(defaultYear);
+    }
+  }, [defaultYear, fYear, queryYear]);
+
+  useEffect(() => {
+    const parsed = Number.parseInt(fMonth, 10);
+    if (fMonth && Number.isFinite(parsed) && parsed !== queryMonth) {
+      setQueryMonth(parsed);
+      return;
+    }
+    if (!fMonth && queryMonth !== defaultMonth) {
+      setQueryMonth(defaultMonth);
+    }
+  }, [defaultMonth, fMonth, queryMonth]);
 
   // 月次 → セッション行へフラット化
   const allRows = useMemo(() => sessionRows, [sessionRows]);
@@ -332,37 +355,12 @@ export default function SitesWorkTab() {
 
   return (
     <div className="space-y-4">
-      {/* 年月選択（取得対象の基準） */}
-      <div className="flex gap-2 items-end">
-        <div>
-          <label htmlFor="calendar-year" className="block text-sm text-gray-600">
-            年
-          </label>
-          <input
-            type="number"
-            className="border rounded px-2 py-1 w-28"
-            value={year}
-            id="calendar-year"
-            onChange={(e) => setYear(Number(e.target.value || today.getFullYear()))}
-          />
+      {(loading || error) && (
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          {loading && <span className="text-gray-500">更新中...</span>}
+          {error && <span className="text-red-600">Error: {error}</span>}
         </div>
-        <div>
-          <label htmlFor="calendar-month" className="block text-sm text-gray-600">
-            月
-          </label>
-          <input
-            type="number"
-            className="border rounded px-2 py-1 w-20"
-            min={1}
-            max={12}
-            value={month}
-            id="calendar-month"
-            onChange={(e) => setMonth(Number(e.target.value || today.getMonth() + 1))}
-          />
-        </div>
-        {loading && <span className="text-sm text-gray-500">更新中...</span>}
-        {error && <span className="text-sm text-red-600">Error: {error}</span>}
-      </div>
+      )}
 
       {/* 1次フィルタ：必須 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
