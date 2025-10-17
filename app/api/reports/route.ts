@@ -1,36 +1,45 @@
 import { NextResponse } from 'next/server';
 
-import { getReportRowsByUserName } from '@/lib/services/reports';
+import { getReportRowsByFilters, type ReportFilters } from '@/lib/services/reports';
 
-const SORT_KEYS = ['year', 'month', 'day', 'siteName'] as const;
-type SortKey = (typeof SORT_KEYS)[number];
+function parseNumber(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    return undefined;
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseString(value: string | null): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed === '' ? undefined : trimmed;
+}
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const userName = searchParams.get('userName')?.trim();
-  const sortParam = (searchParams.get('sort') ?? '').trim();
-  const orderParam = (searchParams.get('order') ?? 'asc').trim().toLowerCase();
-
-  if (!userName) {
-    return NextResponse.json(
-      { ok: false, error: 'userName is required', rows: [] },
-      { status: 400 }
-    );
-  }
+  const filters: ReportFilters = {
+    user: parseString(searchParams.get('user') ?? searchParams.get('userName')),
+    site: parseString(searchParams.get('site')),
+    year: parseNumber(searchParams.get('year')),
+    month: parseNumber(searchParams.get('month')),
+    day: parseNumber(searchParams.get('day')),
+  };
 
   try {
-    const sort = SORT_KEYS.includes(sortParam as SortKey)
-      ? (sortParam as SortKey)
-      : undefined;
-    const order: 'asc' | 'desc' = orderParam === 'desc' ? 'desc' : 'asc';
-
-    const rows = await getReportRowsByUserName(userName, sort, order);
-    return NextResponse.json({ ok: true, rows });
+    const result = await getReportRowsByFilters(filters);
+    return NextResponse.json({ ok: true, rows: result.rows, options: result.options });
   } catch (error) {
     console.error('GET /api/reports failed', error);
     return NextResponse.json(
-      { ok: false, error: 'Internal Server Error', rows: [] },
-      { status: 500 }
+      { ok: false, error: 'Internal Server Error', rows: [], options: { years: [], months: [], days: [], users: [], sites: [] } },
+      { status: 500 },
     );
   }
 }
