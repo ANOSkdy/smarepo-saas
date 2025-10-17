@@ -27,13 +27,13 @@ const { resolveDashboardUserName } = await import(
   new URL('../dist-nav/app/(protected)/dashboard/layout.js', import.meta.url),
 );
 
-test('nav tabs expose calendar, reports, reports/sites, and NFC routes', () => {
+test('nav tabs expose calendar, reports, and NFC routes', () => {
   assert.equal(Array.isArray(NAV_TABS), true);
   const hrefs = NAV_TABS.map((tab) => tab.href);
   assert.ok(hrefs.includes('/dashboard'));
   assert.ok(hrefs.includes('/reports'));
-  assert.ok(hrefs.includes('/reports/sites'));
   assert.ok(hrefs.includes('/nfc?machineId=1001'));
+  assert.ok(!hrefs.includes('/reports/sites'));
 });
 
 test('isActivePath matches base route segments', () => {
