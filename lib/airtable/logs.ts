@@ -23,6 +23,16 @@ export type NormalizedLog = {
   rawFields: Record<string, unknown>;
 };
 
+export type ReportLogRow = {
+  id: string;
+  timestamp: string;
+  date: string;
+  type: 'IN' | 'OUT';
+  username?: string;
+  userId?: string;
+  siteName?: string;
+};
+
 export type CalendarDaySummary = {
   date: string;
   sites: string[];
@@ -278,6 +288,30 @@ export async function getLogsBetween(params: { from: Date; to: Date }): Promise<
       machineName: log.machineName ?? null,
     };
   });
+}
+
+export async function listLogsForReports(): Promise<ReportLogRow[]> {
+  const records = await logsTable
+    .select({
+      fields: ['timestamp', 'date', 'type', 'username', 'userId', 'siteName'],
+      pageSize: 200,
+      sort: [{ field: 'timestamp', direction: 'asc' }],
+    })
+    .all();
+
+  return records.map((record) => ({
+    id: record.id,
+    timestamp: String(record.get('timestamp') ?? ''),
+    date: String(record.get('date') ?? ''),
+    type: (record.get('type') as 'IN' | 'OUT') ?? 'IN',
+    username: record.get('username')
+      ? String(record.get('username'))
+      : undefined,
+    userId: record.get('userId') ? String(record.get('userId')) : undefined,
+    siteName: record.get('siteName')
+      ? String(record.get('siteName'))
+      : undefined,
+  }));
 }
 
 function toJstParts(timestampMs: number) {
