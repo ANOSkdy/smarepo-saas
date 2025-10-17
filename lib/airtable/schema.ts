@@ -55,7 +55,7 @@ export function buildMachineFilter(machineId: string): string {
   return wrapWithAnd(`{${LOGS_FIELDS.machineIdLookup}}='${escapeAirtable(machineId)}'`);
 }
 
-export function buildLookupContains(field: string, value: string): string {
+export function buildLookupEqualsIgnoreCase(field: string, value: string): string {
   const lowered = value.trim().toLowerCase();
-  return `IFERROR(FIND('${escapeAirtable(lowered)}', LOWER(CONCATENATE({${field}}))), 0) > 0`;
+  return wrapWithAnd(`LOWER(CONCATENATE({${field}}))='${escapeAirtable(lowered)}'`);
 }

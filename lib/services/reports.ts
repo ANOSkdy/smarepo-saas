@@ -2,7 +2,7 @@ import { logsTable, usersTable } from '@/lib/airtable';
 import {
   LOG_FIELDS,
   LOGS_FIELDS,
-  buildLookupContains,
+  buildLookupEqualsIgnoreCase,
   buildUserFilterById,
   buildUserFilterByName,
   escapeAirtable,
@@ -42,7 +42,7 @@ export async function getReportRowsByUserName(
     if (typeof rawValue !== 'string') return;
     const trimmed = rawValue.trim();
     if (!trimmed) return;
-    filterParts.add(buildLookupContains(fieldName, trimmed));
+    filterParts.add(buildLookupEqualsIgnoreCase(fieldName, trimmed));
   };
 
   pushEqualityFilter(buildUserFilterByName, userFields.name as string | undefined);
