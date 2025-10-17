@@ -34,33 +34,76 @@ type Session = {
   year?: number;
   month?: number;
   day?: number;
-  username?: unknown; // 従業員名
-  sitename?: unknown; // 現場名
-  siteName?: unknown;
-  workdescription?: unknown; // 業務内容
+  date?: string;
+  username?: unknown; // 従業員名（旧API互換）
+  userName?: unknown; // 従業員名（calendar/day API）
+  sitename?: unknown; // 現場名（旧API互換）
+  siteName?: unknown; // 現場名（calendar/day API）
+  workdescription?: unknown; // 業務内容（旧API互換）
+  workDescription?: unknown; // 業務内容（calendar/day API）
   work?: unknown;
   workName?: unknown;
-  machineId?: string | number | null;
-  machineName?: string | null;
+  machineId?: unknown;
+  machineName?: unknown;
+  startMs?: number;
+  endMs?: number;
   // フォールバック用（API差異対策）
   clockInAt?: string;
+  clockOutAt?: string;
+};
+
+type DaySessionsResponse = {
+  date?: string;
+  sessions?: Session[];
 };
 
 type MonthRes = {
   year: number;
   month: number;
-  days: { date: string; sessions: Session[] }[];
+  days: { date: string; sessions: unknown }[];
 };
 
-function ymdFromSession(s: Session) {
-  if (s.year && s.month && s.day) return { y: s.year, m: s.month, d: s.day };
-  // fallbacks from clockInAt if provided
-  if (s.clockInAt) {
-    const dt = new Date(s.clockInAt);
-    if (!isNaN(dt.getTime())) {
+function ymdFromSession(session: Session) {
+  if (Number.isFinite(session.year) && Number.isFinite(session.month) && Number.isFinite(session.day)) {
+    return {
+      y: session.year as number,
+      m: session.month as number,
+      d: session.day as number,
+    };
+  }
+
+  const dateText = typeof session.date === "string" ? session.date.trim() : "";
+  if (dateText) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateText);
+    if (match) {
+      return {
+        y: Number.parseInt(match[1], 10),
+        m: Number.parseInt(match[2], 10),
+        d: Number.parseInt(match[3], 10),
+      };
+    }
+    const parsed = new Date(dateText);
+    if (!Number.isNaN(parsed.getTime())) {
+      return {
+        y: parsed.getFullYear(),
+        m: parsed.getMonth() + 1,
+        d: parsed.getDate(),
+      };
+    }
+  }
+
+  if (typeof session.startMs === "number" && Number.isFinite(session.startMs)) {
+    const dt = new Date(session.startMs);
+    return { y: dt.getFullYear(), m: dt.getMonth() + 1, d: dt.getDate() };
+  }
+
+  if (session.clockInAt) {
+    const dt = new Date(session.clockInAt);
+    if (!Number.isNaN(dt.getTime())) {
       return { y: dt.getFullYear(), m: dt.getMonth() + 1, d: dt.getDate() };
     }
   }
+
   return { y: undefined as number | undefined, m: undefined as number | undefined, d: undefined as number | undefined };
 }
 
@@ -73,7 +116,7 @@ export default function SitesWorkTab() {
   const [sites, setSites] = useState<SiteMaster[]>([]);
 
   // 月次データ（カレンダーと同様の取得方法）
-  const [monthData, setMonthData] = useState<MonthRes | null>(null);
+  const [sessionRows, setSessionRows] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,47 +133,119 @@ export default function SitesWorkTab() {
   const [fMachine, setFMachine] = useState<string>("");
 
   useEffect(() => {
-    let abort = false;
-    (async () => {
+    let aborted = false;
+    const controller = new AbortController();
+
+    const load = async () => {
       setLoading(true);
       setError(null);
-      try {
-        // 現場マスタ（client=元請・代理人）
-        const m = await fetch("/api/masters/sites", { cache: "no-store" });
-        const mJson: SiteMaster[] = await m.json();
-        if (!abort) setSites(Array.isArray(mJson) ? mJson : []);
+      setSessionRows([]);
 
-        // カレンダー（月次）— 既存と同様の取得方法
-        const q = new URLSearchParams({ year: String(year), month: String(month) });
-        const r = await fetch(`/api/calendar/month?${q.toString()}`, { cache: "no-store" });
-        if (!r.ok) throw new Error(`calendar/month failed: ${r.status}`);
-        const json: MonthRes = await r.json();
-        if (!abort) setMonthData(json);
-      } catch (e: unknown) {
-        if (!abort) {
-          const message = e instanceof Error ? e.message : "fetch failed";
+      try {
+        const params = new URLSearchParams({ year: String(year), month: String(month) });
+
+        const [sitesRes, monthRes] = await Promise.all([
+          fetch("/api/masters/sites", {
+            cache: "no-store",
+            credentials: "same-origin",
+            signal: controller.signal,
+          }),
+          fetch(`/api/calendar/month?${params.toString()}`, {
+            cache: "no-store",
+            credentials: "same-origin",
+            signal: controller.signal,
+          }),
+        ]);
+
+        if (!sitesRes.ok) {
+          throw new Error(`masters/sites failed: ${sitesRes.status}`);
+        }
+        if (!monthRes.ok) {
+          throw new Error(`calendar/month failed: ${monthRes.status}`);
+        }
+
+        const sitesJson = (await sitesRes.json()) as SiteMaster[] | null;
+        const monthJson = (await monthRes.json()) as MonthRes | null;
+
+        if (!aborted) {
+          setSites(Array.isArray(sitesJson) ? sitesJson : []);
+        }
+
+        const days = Array.isArray(monthJson?.days) ? monthJson?.days : [];
+        if (days.length === 0) {
+          if (!aborted) {
+            setSessionRows([]);
+          }
+          return;
+        }
+
+        const aggregated: Session[] = [];
+        for (const day of days) {
+          if (aborted) {
+            return;
+          }
+          if (!day?.date) {
+            continue;
+          }
+          try {
+            const dayRes = await fetch(`/api/calendar/day?date=${encodeURIComponent(day.date)}`, {
+              cache: "no-store",
+              credentials: "same-origin",
+              signal: controller.signal,
+            });
+            if (!dayRes.ok) {
+              throw new Error(`calendar/day failed: ${dayRes.status}`);
+            }
+            const dayJson = (await dayRes.json()) as DaySessionsResponse | null;
+            if (aborted) {
+              return;
+            }
+            const sessions = Array.isArray(dayJson?.sessions) ? dayJson?.sessions : [];
+            for (const session of sessions) {
+              aggregated.push({ ...session, date: day.date });
+            }
+          } catch (dayError) {
+            if (controller.signal.aborted) {
+              return;
+            }
+            if (aborted) {
+              return;
+            }
+            console.error("[reports][sites] failed to fetch day sessions", dayError);
+            setError((prev) => prev ?? "日次データの取得に失敗しました。");
+          }
+        }
+
+        if (!aborted) {
+          setSessionRows(aggregated);
+        }
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : "fetch failed";
+        if (!aborted) {
+          setSites([]);
+          setSessionRows([]);
           setError(message);
         }
       } finally {
-        if (!abort) setLoading(false);
+        if (!aborted) {
+          setLoading(false);
+        }
       }
-    })();
-    return () => {
-      abort = true;
     };
-  }, [year, month]);
+
+    void load();
+
+    return () => {
+      aborted = true;
+      controller.abort();
+    };
+  }, [month, year]);
 
   // 月次 → セッション行へフラット化
-  const allRows = useMemo(() => {
-    if (!monthData?.days) return [];
-    const rows: (Session & { _date: string })[] = [];
-    for (const d of monthData.days) {
-      for (const s of d.sessions || []) {
-        rows.push({ ...s, _date: d.date });
-      }
-    }
-    return rows;
-  }, [monthData]);
+  const allRows = useMemo(() => sessionRows, [sessionRows]);
 
   // セレクタ候補
   const siteNames = useMemo(() => {
@@ -142,7 +257,9 @@ export default function SitesWorkTab() {
     return Array.from(new Set(vals.filter(Boolean)));
   }, [sites]);
   const works = useMemo(() => {
-    const vals = allRows.map((row) => asText(row.workdescription ?? row.work ?? row.workName));
+    const vals = allRows.map((row) =>
+      asText(row.workdescription ?? row.workDescription ?? row.work ?? row.workName),
+    );
     return Array.from(new Set(vals.filter(Boolean)));
   }, [allRows]);
 
@@ -150,7 +267,8 @@ export default function SitesWorkTab() {
   const primaryFiltered = useMemo(() => {
     if (!fSite || !fWork || !fClient) return [];
     const siteOk = (row: Session) => asText(row.sitename ?? row.siteName) === fSite;
-    const workOk = (row: Session) => asText(row.workdescription ?? row.work ?? row.workName) === fWork;
+    const workOk = (row: Session) =>
+      asText(row.workdescription ?? row.workDescription ?? row.work ?? row.workName) === fWork;
     const clientOk = (row: Session) => {
       const site = sites.find((s) => asText(s.fields?.name ?? s.name) === asText(row.sitename ?? row.siteName));
       return asText(site?.fields?.client ?? site?.client ?? site?.clientName) === fClient;
@@ -160,7 +278,7 @@ export default function SitesWorkTab() {
 
   // secondary filters' candidates must be built AFTER primary filter (per requirements)
   const employees = useMemo(() => {
-    const vals = primaryFiltered.map((r) => asText(r.username));
+    const vals = primaryFiltered.map((r) => asText(r.username ?? r.userName));
     return Array.from(new Set(vals.filter(Boolean)));
   }, [primaryFiltered]);
   const machines = useMemo(() => {
@@ -175,7 +293,7 @@ export default function SitesWorkTab() {
       if (fYear && String(y) !== fYear) return false;
       if (fMonth && String(m) !== fMonth) return false;
       if (fDay && String(d) !== fDay) return false;
-      if (fEmployee && asText(r.username) !== fEmployee) return false;
+      if (fEmployee && asText(r.username ?? r.userName) !== fEmployee) return false;
       if (fMachine) {
         const mv = asText(r.machineName ?? r.machineId);
         if (mv !== fMachine) return false;
@@ -188,7 +306,8 @@ export default function SitesWorkTab() {
   const groupedByWork = useMemo(() => {
     const map = new Map<string, Session[]>();
     for (const row of finalRows) {
-      const key = asText(row.workdescription ?? row.work ?? row.workName) || "(未設定)";
+      const key =
+        asText(row.workdescription ?? row.workDescription ?? row.work ?? row.workName) || "(未設定)";
       const arr = map.get(key) || [];
       arr.push(row);
       map.set(key, arr);
@@ -198,8 +317,8 @@ export default function SitesWorkTab() {
       arr.sort((a, b) => {
         const A = ymdFromSession(a);
         const B = ymdFromSession(b);
-        const nameA = asText(a.username);
-        const nameB = asText(b.username);
+        const nameA = asText(a.username ?? a.userName);
+        const nameB = asText(b.username ?? b.userName);
         return (
           (A.y ?? 0) - (B.y ?? 0) ||
           (A.m ?? 0) - (B.m ?? 0) ||
@@ -442,7 +561,7 @@ export default function SitesWorkTab() {
                           <td className="px-3 py-2">{y ?? ""}</td>
                           <td className="px-3 py-2">{m ?? ""}</td>
                           <td className="px-3 py-2">{d ?? ""}</td>
-                          <td className="px-3 py-2">{asText(r.username)}</td>
+                          <td className="px-3 py-2">{asText(r.username ?? r.userName)}</td>
                         </tr>
                       );
                     })}
