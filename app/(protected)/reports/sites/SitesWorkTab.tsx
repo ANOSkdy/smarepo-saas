@@ -108,9 +108,10 @@ function ymdFromSession(session: Session) {
 }
 
 export default function SitesWorkTab() {
-  const today = new Date();
-  const [year, setYear] = useState<number>(today.getFullYear());
-  const [month, setMonth] = useState<number>(today.getMonth() + 1);
+  const defaultYear = useMemo(() => new Date().getFullYear(), []);
+  const defaultMonth = useMemo(() => new Date().getMonth() + 1, []);
+  const [queryYear, setQueryYear] = useState<number>(defaultYear);
+  const [queryMonth, setQueryMonth] = useState<number>(defaultMonth);
 
   // マスタ
   const [sites, setSites] = useState<SiteMaster[]>([]);
@@ -120,10 +121,9 @@ export default function SitesWorkTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 1次フィルタ（必須）：現場名・元請/代理人・業務内容
+  // 1次フィルタ（必須）：現場名・業務内容（元請/代理人は現場から自動決定）
   const [fSite, setFSite] = useState<string>("");
-  const [fClient, setFClient] = useState<string>("");
-  const [fWork, setFWork] = useState<string>("");
+  const [fWorks, setFWorks] = useState<string[]>([]);
 
   // 2次フィルタ（任意）：年・月・日・従業員・機械
   const [fYear, setFYear] = useState<string>("");
@@ -142,7 +142,7 @@ export default function SitesWorkTab() {
       setSessionRows([]);
 
       try {
-        const params = new URLSearchParams({ year: String(year), month: String(month) });
+        const params = new URLSearchParams({ year: String(queryYear), month: String(queryMonth) });
 
         const [sitesRes, monthRes] = await Promise.all([
           fetch("/api/masters/sites", {
@@ -242,7 +242,29 @@ export default function SitesWorkTab() {
       aborted = true;
       controller.abort();
     };
-  }, [month, year]);
+  }, [queryMonth, queryYear]);
+
+  useEffect(() => {
+    const parsed = Number.parseInt(fYear, 10);
+    if (fYear && Number.isFinite(parsed) && parsed !== queryYear) {
+      setQueryYear(parsed);
+      return;
+    }
+    if (!fYear && queryYear !== defaultYear) {
+      setQueryYear(defaultYear);
+    }
+  }, [defaultYear, fYear, queryYear]);
+
+  useEffect(() => {
+    const parsed = Number.parseInt(fMonth, 10);
+    if (fMonth && Number.isFinite(parsed) && parsed !== queryMonth) {
+      setQueryMonth(parsed);
+      return;
+    }
+    if (!fMonth && queryMonth !== defaultMonth) {
+      setQueryMonth(defaultMonth);
+    }
+  }, [defaultMonth, fMonth, queryMonth]);
 
   // 月次 → セッション行へフラット化
   const allRows = useMemo(() => sessionRows, [sessionRows]);
@@ -252,10 +274,11 @@ export default function SitesWorkTab() {
     const vals = (sites || []).map((site) => asText(site.fields?.name ?? site.name));
     return Array.from(new Set(vals.filter(Boolean)));
   }, [sites]);
-  const clients = useMemo(() => {
-    const vals = (sites || []).map((site) => asText(site.fields?.client ?? site.client ?? site.clientName));
-    return Array.from(new Set(vals.filter(Boolean)));
-  }, [sites]);
+  const selectedClient = useMemo(() => {
+    if (!fSite) return "";
+    const site = sites.find((s) => asText(s.fields?.name ?? s.name) === fSite);
+    return asText(site?.fields?.client ?? site?.client ?? site?.clientName);
+  }, [fSite, sites]);
   const works = useMemo(() => {
     const vals = allRows.map((row) =>
       asText(row.workdescription ?? row.workDescription ?? row.work ?? row.workName),
@@ -265,16 +288,15 @@ export default function SitesWorkTab() {
 
   // 1次フィルタ適用
   const primaryFiltered = useMemo(() => {
-    if (!fSite || !fWork || !fClient) return [];
-    const siteOk = (row: Session) => asText(row.sitename ?? row.siteName) === fSite;
-    const workOk = (row: Session) =>
-      asText(row.workdescription ?? row.workDescription ?? row.work ?? row.workName) === fWork;
-    const clientOk = (row: Session) => {
-      const site = sites.find((s) => asText(s.fields?.name ?? s.name) === asText(row.sitename ?? row.siteName));
-      return asText(site?.fields?.client ?? site?.client ?? site?.clientName) === fClient;
-    };
-    return allRows.filter((r) => siteOk(r) && workOk(r) && clientOk(r));
-  }, [allRows, fSite, fWork, fClient, sites]);
+    if (!fSite || fWorks.length === 0) return [];
+    return allRows.filter((row) => {
+      const siteOk = asText(row.sitename ?? row.siteName) === fSite;
+      if (!siteOk) return false;
+      const workValue = asText(row.workdescription ?? row.workDescription ?? row.work ?? row.workName);
+      if (!workValue) return false;
+      return fWorks.includes(workValue);
+    });
+  }, [allRows, fSite, fWorks]);
 
   // secondary filters' candidates must be built AFTER primary filter (per requirements)
   const employees = useMemo(() => {
@@ -331,38 +353,12 @@ export default function SitesWorkTab() {
   }, [finalRows]);
 
   return (
-    <div className="space-y-4">
-      {/* 年月選択（取得対象の基準） */}
-      <div className="flex gap-2 items-end">
-        <div>
-          <label htmlFor="calendar-year" className="block text-sm text-gray-600">
-            年
-          </label>
-          <input
-            type="number"
-            className="border rounded px-2 py-1 w-28"
-            value={year}
-            id="calendar-year"
-            onChange={(e) => setYear(Number(e.target.value || today.getFullYear()))}
-          />
+    <div className="space-y-4" aria-busy={loading}>
+      {error && (
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <span className="text-red-600">Error: {error}</span>
         </div>
-        <div>
-          <label htmlFor="calendar-month" className="block text-sm text-gray-600">
-            月
-          </label>
-          <input
-            type="number"
-            className="border rounded px-2 py-1 w-20"
-            min={1}
-            max={12}
-            value={month}
-            id="calendar-month"
-            onChange={(e) => setMonth(Number(e.target.value || today.getMonth() + 1))}
-          />
-        </div>
-        {loading && <span className="text-sm text-gray-500">更新中...</span>}
-        {error && <span className="text-sm text-red-600">Error: {error}</span>}
-      </div>
+      )}
 
       {/* 1次フィルタ：必須 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -374,7 +370,11 @@ export default function SitesWorkTab() {
             id="filter-site"
             className="border rounded px-2 py-1 w-full"
             value={fSite}
-            onChange={(e) => setFSite(e.target.value)}
+            onChange={(e) => {
+              const nextSite = e.target.value;
+              setFSite(nextSite);
+              setFWorks([]);
+            }}
           >
             <option value="">（選択）</option>
             {siteNames.map((n) => (
@@ -388,19 +388,13 @@ export default function SitesWorkTab() {
           <label htmlFor="filter-client" className="block text-sm text-gray-600">
             元請・代理人
           </label>
-          <select
+          <input
             id="filter-client"
-            className="border rounded px-2 py-1 w-full"
-            value={fClient}
-            onChange={(e) => setFClient(e.target.value)}
-          >
-            <option value="">（選択）</option>
-            {clients.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+            className="border rounded px-2 py-1 w-full bg-gray-100 text-gray-700"
+            value={selectedClient}
+            readOnly
+            placeholder="現場を選択すると自動入力"
+          />
         </div>
         <div>
           <label htmlFor="filter-work" className="block text-sm text-gray-600">
@@ -408,11 +402,15 @@ export default function SitesWorkTab() {
           </label>
           <select
             id="filter-work"
+            multiple
+            size={Math.min(works.length || 4, 6)}
             className="border rounded px-2 py-1 w-full"
-            value={fWork}
-            onChange={(e) => setFWork(e.target.value)}
+            value={fWorks}
+            onChange={(e) => {
+              const values = Array.from(e.target.selectedOptions, (option) => option.value);
+              setFWorks(values);
+            }}
           >
-            <option value="">（選択）</option>
             {works.map((w) => (
               <option key={w} value={w}>
                 {w}
@@ -423,7 +421,11 @@ export default function SitesWorkTab() {
       </div>
 
       {/* 2次フィルタ：任意（1次が揃ってから活性化） */}
-      <fieldset className={`grid grid-cols-1 md:grid-cols-5 gap-3 ${!fSite || !fClient || !fWork ? "opacity-40 pointer-events-none" : ""}`}>
+      <fieldset
+        className={`grid grid-cols-1 md:grid-cols-5 gap-3 ${
+          !fSite || fWorks.length === 0 ? "opacity-40 pointer-events-none" : ""
+        }`}
+      >
         <div>
           <label htmlFor="filter-year" className="block text-sm text-gray-600">
             年
@@ -535,10 +537,12 @@ export default function SitesWorkTab() {
       </fieldset>
 
       {/* グリッド表示（業務内容ごとに区切る／列：年・月・日・従業員名） */}
-      {(!fSite || !fClient || !fWork) && (
-        <p className="text-sm text-gray-500">まず「現場名」「元請・代理人」「業務内容」を選択してください。</p>
+      {(!fSite || fWorks.length === 0) && (
+        <p className="text-sm text-gray-500">
+          まず「現場名」と「業務内容」を選択してください。元請・代理人は現場選択で自動入力されます。
+        </p>
       )}
-      {fSite && fClient && fWork && (
+      {fSite && fWorks.length > 0 && (
         <div className="space-y-8">
           {groupedByWork.map(([work, rows]) => (
             <section key={work}>

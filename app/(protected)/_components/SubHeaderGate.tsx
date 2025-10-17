@@ -7,7 +7,11 @@ export function shouldHideSubHeader(pathname: string | null | undefined): boolea
   if (!pathname) {
     return false;
   }
-  return pathname.startsWith('/dashboard') || pathname.startsWith('/nfc');
+  return (
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/nfc') ||
+    pathname.startsWith('/reports')
+  );
 }
 
 export default function SubHeaderGate({ children }: { children: ReactNode }) {
