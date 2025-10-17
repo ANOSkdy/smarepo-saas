@@ -191,7 +191,9 @@ async function fetchLogsRobust(
   return [];
 }
 
-function mapLogs(records: AirtableRecord<FieldSet>[]): LogRec[] {
+// Airtableのselect().all()は readonly 配列(Records<FieldSet>)を返すため、
+// 受け口を readonly で受けることで型エラーを解消する（最小変更）。
+function mapLogs(records: readonly AirtableRecord<FieldSet>[]): LogRec[] {
   return records
     .map((record) => {
       const getter = (key: string) => record.get(key);
