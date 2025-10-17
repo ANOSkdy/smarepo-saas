@@ -1,0 +1,15 @@
+--- /reports data flow (app/reports/page.tsx → lib/services/reports.ts)
++++ /api/calendar/day|month data flow (app/api/calendar/* → lib/airtable/logs.ts)
+@@ Data acquisition
+- usersTable filtered by `{name} = "<userName>"` to resolve a single Airtable record ID. (lib/services/reports.ts:15-23)
+- logsTable filtered by `FIND("<userRecordId>", ARRAYJOIN({user}))` to fetch punches for that link. (lib/services/reports.ts:22-28)
+- Returned records are converted to `LogRecord` and paired locally. (lib/services/reports.ts:30-35)
++ getLogsBetween(range) queries by timestamp window only and normalizes every log. (lib/airtable/logs.ts:226-272)
++ buildSessionDetails rebuilds user/machine/site metadata from multiple lookup columns. (lib/airtable/logs.ts:272-410)
++ calendar route never filters by the `{user}` link; instead it post-processes lookups/user maps. (app/api/calendar/day/route.ts:24-107)
+@@ User resolution
+- Assumes the `{user}` link column contains the Airtable record ID, so FIND() succeeds. (lib/services/reports.ts:22-28)
++ Accepts logs without `{user}` links by matching against `userId`, `username`, or lookup text. (lib/airtable/logs.ts:260-305)
+@@ Output shape
+- pairLogsByDay groups by `record.fields.date` (fallback UTC date from timestamp) and surfaces `{siteName, clientName, minutes}`. (lib/reports/pair.ts:24-129)
++ buildSessionDetails returns detailed sessions with JST formatting and machine/work metadata used by calendar UI. (lib/airtable/logs.ts:306-410)

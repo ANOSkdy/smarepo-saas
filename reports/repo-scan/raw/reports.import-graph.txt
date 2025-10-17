@@ -1,0 +1,11 @@
+- app/reports/page.tsx
+  externals: next/link
+  - lib/airtable.ts
+    externals: airtable
+    - types/index.ts
+      externals: airtable
+    - lib/logger.ts
+  - lib/reports/pair.ts
+  - lib/services/reports.ts
+    - lib/airtable.ts
+    - lib/reports/pair.ts
