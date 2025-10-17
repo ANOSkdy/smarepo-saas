@@ -101,6 +101,13 @@ export async function POST(req: NextRequest) {
     if (!fields.siteName && nearestSite?.fields?.name) {
       fields.siteName = nearestSite.fields.name;
     }
+    const clientName =
+      typeof nearestSite?.fields?.client === 'string'
+        ? nearestSite.fields.client.trim()
+        : undefined;
+    if (clientName) {
+      fields.clientName = clientName;
+    }
     if (!fields.timestamp) {
       fields.timestamp = timestamp;
     }

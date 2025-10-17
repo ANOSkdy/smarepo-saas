@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { validateStampRequest } from './dist/validator.js';
+const { filterFields, LOGS_ALLOWED_FIELDS } = await import(
+  './dist/lib/airtableSchema.js'
+);
 
 test('validateStampRequest fails on missing fields', () => {
   const result = validateStampRequest({});
@@ -51,5 +54,14 @@ test('validateStampRequest fails on invalid clientDecision', () => {
     clientDecision: 'wrong',
   });
   assert.strictEqual(result.success, false);
+});
+
+test('filterFields keeps clientName when provided', () => {
+  const candidate = {
+    timestamp: '2024-01-01T00:00:00Z',
+    clientName: 'Acoru合同会社',
+  };
+  const result = filterFields(candidate, LOGS_ALLOWED_FIELDS);
+  assert.deepStrictEqual(result, candidate);
 });
 
