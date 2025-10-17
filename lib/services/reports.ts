@@ -28,17 +28,29 @@ export type ReportFilterResult = {
   options: ReportFilterOptions;
 };
 
-const LOG_SELECT_FIELDS = [
+const REQUIRED_LOG_SELECT_FIELDS = [
   'type',
   'timestamp',
   'date',
   'siteName',
   'clientName',
   'user',
-  'username',
   'userId',
   'name (from user)',
 ] as const;
+
+const OPTIONAL_LOG_SELECT_FIELDS = ['username'] as const;
+
+const UNKNOWN_FIELD_STATUS_CODE = 422;
+
+function isUnknownFieldError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'statusCode' in error &&
+    (error as { statusCode?: number }).statusCode === UNKNOWN_FIELD_STATUS_CODE
+  );
+}
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
@@ -135,11 +147,27 @@ function extractDateParts(fields: Record<string, unknown>): DateParts | null {
 }
 
 export async function getReportRowsByFilters(filters: ReportFilters): Promise<ReportFilterResult> {
+  const selectFields = [
+    ...REQUIRED_LOG_SELECT_FIELDS,
+    ...OPTIONAL_LOG_SELECT_FIELDS,
+  ];
+
   const records = await logsTable
     .select({
-      fields: [...LOG_SELECT_FIELDS],
+      fields: selectFields,
     })
-    .all();
+    .all()
+    .catch((error) => {
+      if (!isUnknownFieldError(error)) {
+        throw error;
+      }
+
+      return logsTable
+        .select({
+          fields: [...REQUIRED_LOG_SELECT_FIELDS],
+        })
+        .all();
+    });
 
   const enriched: Array<{
     year: number;
