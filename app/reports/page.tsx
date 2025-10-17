@@ -4,8 +4,6 @@ import { usersTable } from '@/lib/airtable';
 import type { ReportRow } from '@/lib/reports/pair';
 import { getReportRowsByUserName } from '@/lib/services/reports';
 
-type SortKey = 'year' | 'month' | 'day' | 'siteName';
-
 type SearchParams = Record<string, string | string[] | undefined>;
 
 async function fetchUsers(): Promise<string[]> {
@@ -22,14 +20,6 @@ async function fetchUsers(): Promise<string[]> {
   return Array.from(names).sort((a, b) => a.localeCompare(b, 'ja'));
 }
 
-async function loadRows(
-  userName: string,
-  sort?: SortKey,
-  order?: 'asc' | 'desc'
-): Promise<ReportRow[]> {
-  return getReportRowsByUserName(userName, sort, order ?? 'asc');
-}
-
 function formatMinutes(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
@@ -43,65 +33,67 @@ function toSingleValue(value: string | string[] | undefined): string {
   return value ?? '';
 }
 
-function createSortLink(
-  field: SortKey,
-  userName: string,
-  currentSort: SortKey | '',
-  currentOrder: 'asc' | 'desc'
-): string {
-  const params = new URLSearchParams();
-  if (userName) {
-    params.set('userName', userName);
-  }
-  params.set('sort', field);
-  const nextOrder = currentSort === field ? (currentOrder === 'asc' ? 'desc' : 'asc') : 'asc';
-  params.set('order', nextOrder);
-  return `?${params.toString()}`;
+function toNumberValue(value: string | string[] | undefined): number | undefined {
+  const single = toSingleValue(value).trim();
+  if (!single) return undefined;
+  const parsed = Number.parseInt(single, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export default async function ReportsPage({ searchParams }: { searchParams: SearchParams }) {
+type Filters = {
+  user: string;
+  site: string;
+  year?: number;
+  month?: number;
+  day?: number;
+};
+
+export default async function ReportsPage({ searchParams }: { searchParams?: SearchParams }) {
+  const params = searchParams ?? {};
+  const filters: Filters = {
+    user: toSingleValue(params.user).trim(),
+    site: toSingleValue(params.site).trim(),
+    year: toNumberValue(params.year),
+    month: toNumberValue(params.month),
+    day: toNumberValue(params.day),
+  };
+
   const users = await fetchUsers();
-  const userName = toSingleValue(searchParams.userName).trim();
-  const sortParam = toSingleValue(searchParams.sort).trim();
-  const orderParam = toSingleValue(searchParams.order).trim().toLowerCase();
-  const sort: SortKey | '' =
-    sortParam === 'year' || sortParam === 'month' || sortParam === 'day' || sortParam === 'siteName'
-      ? (sortParam as SortKey)
-      : '';
-  const order: 'asc' | 'desc' = orderParam === 'desc' ? 'desc' : 'asc';
+  const rowsRaw: ReportRow[] = filters.user ? await getReportRowsByUserName(filters.user) : [];
 
-  const rows = userName ? await loadRows(userName, sort || undefined, order) : [];
+  const filteredRows = rowsRaw.filter((row) => {
+    if (filters.year && row.year !== filters.year) return false;
+    if (filters.month && row.month !== filters.month) return false;
+    if (filters.day && row.day !== filters.day) return false;
+    if (filters.site && row.siteName !== filters.site) return false;
+    return true;
+  });
 
-  const sortLabel = (field: SortKey) => {
-    if (sort !== field) return '↕';
-    return order === 'asc' ? '↑' : '↓';
-  };
-
-  const headerLabels: Record<SortKey, string> = {
-    year: '年',
-    month: '月',
-    day: '日',
-    siteName: '現場名',
-  };
+  const availableYears = Array.from(new Set(rowsRaw.map((row) => row.year))).sort((a, b) => a - b);
+  const availableMonths = Array.from(new Set(rowsRaw.map((row) => row.month))).sort((a, b) => a - b);
+  const availableDays = Array.from(new Set(rowsRaw.map((row) => row.day))).sort((a, b) => a - b);
+  const availableSites = Array.from(
+    new Set(rowsRaw.map((row) => row.siteName).filter((name): name is string => Boolean(name && name.trim()))),
+  ).sort((a, b) => a.localeCompare(b, 'ja'));
 
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-6">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold text-gray-900">レポート</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">個別集計</h1>
         <p className="text-sm text-gray-600">従業員ごとの IN/OUT ペアリングから稼働時間を算出します。</p>
       </header>
 
-      <form className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-4" method="get">
+      <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6" method="get">
         <div className="flex flex-col">
-          <label htmlFor="userName" className="text-sm font-medium text-gray-700">
+          <label htmlFor="user" className="text-sm font-medium text-gray-700">
             従業員名
           </label>
           <select
-            id="userName"
-            name="userName"
-            defaultValue={userName}
+            id="user"
+            name="user"
+            defaultValue={filters.user}
             className="mt-1 min-w-[200px] rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            aria-describedby="userName-helper"
+            aria-describedby="user-helper"
           >
             <option value="">-- 選択してください --</option>
             {users.map((name) => (
@@ -110,57 +102,143 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
               </option>
             ))}
           </select>
-          <span id="userName-helper" className="mt-1 text-xs text-gray-500">
+          <span id="user-helper" className="mt-1 text-xs text-gray-500">
             対象の従業員を選ぶとグリッドが表示されます。
           </span>
         </div>
-        <input type="hidden" name="sort" value={sort} />
-        <input type="hidden" name="order" value={order} />
-        <button
-          type="submit"
-          className="mt-2 inline-flex items-center justify-center rounded border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-900 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-        >
-          適用
-        </button>
+
+        <div className="flex flex-col">
+          <label htmlFor="site" className="text-sm font-medium text-gray-700">
+            現場名
+          </label>
+          <select
+            id="site"
+            name="site"
+            defaultValue={filters.site}
+            disabled={!filters.user}
+            className="mt-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-100"
+          >
+            <option value="">-- すべて --</option>
+            {availableSites.map((site) => (
+              <option key={site} value={site}>
+                {site}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col">
+          <label htmlFor="year" className="text-sm font-medium text-gray-700">
+            年
+          </label>
+          <select
+            id="year"
+            name="year"
+            defaultValue={filters.year?.toString() ?? ''}
+            disabled={!filters.user}
+            className="mt-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-100"
+          >
+            <option value="">-- すべて --</option>
+            {availableYears.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col">
+          <label htmlFor="month" className="text-sm font-medium text-gray-700">
+            月
+          </label>
+          <select
+            id="month"
+            name="month"
+            defaultValue={filters.month?.toString() ?? ''}
+            disabled={!filters.user}
+            className="mt-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-100"
+          >
+            <option value="">-- すべて --</option>
+            {availableMonths.map((month) => (
+              <option key={month} value={month}>
+                {month}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col">
+          <label htmlFor="day" className="text-sm font-medium text-gray-700">
+            日
+          </label>
+          <select
+            id="day"
+            name="day"
+            defaultValue={filters.day?.toString() ?? ''}
+            disabled={!filters.user}
+            className="mt-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-100"
+          >
+            <option value="">-- すべて --</option>
+            {availableDays.map((day) => (
+              <option key={day} value={day}>
+                {day}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-end gap-2">
+          <button
+            type="submit"
+            className="inline-flex w-full items-center justify-center rounded border border-indigo-500 bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          >
+            絞り込み
+          </button>
+        </div>
       </form>
 
-      {userName && (
+      <div className="flex items-center justify-between text-xs text-gray-500">
+        <span>※ ソート機能は提供していません。上部のフィルターで条件を指定してください。</span>
+        <Link href="/reports" className="text-indigo-600 underline">
+          条件をクリア
+        </Link>
+      </div>
+
+      {filters.user && (
         <section className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200">
             <thead className="bg-gray-50">
               <tr className="text-sm text-gray-700">
-                {(['year', 'month', 'day', 'siteName'] as const).map((field) => (
-                  <th key={field} scope="col" className="px-4 py-3 text-left font-semibold">
-                    <div className="flex items-center gap-2">
-                      <span>{headerLabels[field]}</span>
-                      <Link
-                        href={createSortLink(field, userName, sort, order)}
-                        className="rounded border border-transparent px-1 py-0.5 text-xs text-indigo-600 transition hover:border-indigo-200 hover:bg-indigo-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-                        aria-label={`${headerLabels[field]}でソート`}
-                      >
-                        {sortLabel(field)}
-                      </Link>
-                    </div>
-                  </th>
-                ))}
-                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                <th scope="col" className="px-4 py-3 text-left font-semibold">
+                  年
+                </th>
+                <th scope="col" className="px-4 py-3 text-left font-semibold">
+                  月
+                </th>
+                <th scope="col" className="px-4 py-3 text-left font-semibold">
+                  日
+                </th>
+                <th scope="col" className="px-4 py-3 text-left font-semibold">
+                  現場名
+                </th>
+                <th scope="col" className="px-4 py-3 text-left font-semibold">
                   元請・代理人
                 </th>
-                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                <th scope="col" className="px-4 py-3 text-left font-semibold">
                   稼働時間
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white text-sm text-gray-900">
-              {rows.length === 0 ? (
+              {filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500">
-                    データがありません。
+                    条件に一致するデータがありません。
                   </td>
                 </tr>
               ) : (
-                rows.map((row, index) => (
-                  <tr key={`${row.year}-${row.month}-${row.day}-${index}`} className="odd:bg-white even:bg-gray-50">
+                filteredRows.map((row, index) => (
+                  <tr key={`${row.year}-${row.month}-${row.day}-${row.siteName}-${index}`} className="odd:bg-white even:bg-gray-50">
                     <td className="px-4 py-3">{row.year}</td>
                     <td className="px-4 py-3">{row.month}</td>
                     <td className="px-4 py-3">{row.day}</td>
