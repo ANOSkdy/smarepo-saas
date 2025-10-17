@@ -46,7 +46,7 @@ export async function GET(req: Request) {
     const paired = pairLogsByDay(
       logRecords.map<LogRecord>((record) => ({
         id: record.id,
-        fields: record.fields as LogRecord['fields'],
+        fields: record.fields as unknown as LogRecord['fields'],
       }))
     );
 

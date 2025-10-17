@@ -6,7 +6,7 @@ export type LogRecord = {
     date?: string;
     siteName?: string;
     clientName?: string;
-    user?: string[];
+    user?: readonly string[];
   };
 };
 
