@@ -20,38 +20,38 @@ export async function getReportRowsByUserName(
   if (!userRec) return [];
 
   const userFields = userRec.fields as Record<string, unknown>;
-  const filterParts: string[] = [];
+  const filterParts = new Set<string>();
 
   const recordId = userRec.id;
-  filterParts.push(`FIND("${escapeFormulaValue(recordId)}", ARRAYJOIN({user}))`);
+  filterParts.add(`FIND("${escapeFormulaValue(recordId)}", ARRAYJOIN({user}))`);
 
-  const userIdField = typeof userFields.userId === 'string' ? userFields.userId : null;
-  if (userIdField && userIdField.trim().length > 0) {
-    const escaped = escapeFormulaValue(userIdField.trim());
-    filterParts.push(`{userId} = "${escaped}"`);
-  }
+  const pushTextMatch = (fieldName: string, rawValue: unknown) => {
+    if (typeof rawValue !== 'string') return;
+    const normalized = rawValue.trim().toLowerCase();
+    if (!normalized) return;
+    const escaped = escapeFormulaValue(normalized);
+    filterParts.add(`LOWER({${fieldName}} & "") = "${escaped}"`);
+  };
 
-  const usernameField = typeof userFields.username === 'string' ? userFields.username : null;
-  if (usernameField && usernameField.trim().length > 0) {
-    const escaped = escapeFormulaValue(usernameField.trim());
-    filterParts.push(`{username} = "${escaped}"`);
-  }
+  const pushLookupMatch = (fieldName: string, rawValue: unknown) => {
+    if (typeof rawValue !== 'string') return;
+    const normalized = rawValue.trim().toLowerCase();
+    if (!normalized) return;
+    const escaped = escapeFormulaValue(normalized);
+    filterParts.add(`IFERROR(FIND("${escaped}", LOWER(CONCATENATE({${fieldName}}))), 0) > 0`);
+  };
 
-  const nameField = typeof userFields.name === 'string' ? userFields.name : null;
-  if (nameField && nameField.trim().length > 0) {
-    const escaped = escapeFormulaValue(nameField.trim());
-    filterParts.push(`{userName} = "${escaped}"`);
-  }
+  pushTextMatch('userId', userFields.userId);
+  pushTextMatch('username', userFields.username);
+  pushTextMatch('userName', userFields.name);
+  pushTextMatch('email', userFields.email);
 
-  const emailFieldRaw = userFields.email;
-  if (typeof emailFieldRaw === 'string' && emailFieldRaw.trim().length > 0) {
-    const emailLower = emailFieldRaw.trim().toLowerCase();
-    const escapedLower = escapeFormulaValue(emailLower);
-    filterParts.push(`LOWER({userEmail} & "") = "${escapedLower}"`);
-    filterParts.push(`LOWER({email} & "") = "${escapedLower}"`);
-  }
+  pushLookupMatch('userName (from user)', userFields.name ?? userFields.username);
+  pushLookupMatch('name (from user)', userFields.name);
 
-  const filterByFormula = filterParts.length === 1 ? filterParts[0] : `OR(${filterParts.join(', ')})`;
+  const filterExpressions = Array.from(filterParts);
+  const filterByFormula =
+    filterExpressions.length === 1 ? filterExpressions[0] : `OR(${filterExpressions.join(', ')})`;
 
   const logRecords = await logsTable
     .select({
