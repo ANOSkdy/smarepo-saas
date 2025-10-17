@@ -10,6 +10,7 @@ export const LOGS_ALLOWED_FIELDS = [
   'work',
   'workDescription',
   'type',
+  'clientName',
 ] as const;
 
 export type LogsAllowedKey = (typeof LOGS_ALLOWED_FIELDS)[number];

@@ -42,6 +42,7 @@ export interface LogFields extends FieldSet {
   lon?: number;
   accuracy?: number;
   siteName?: string;
+  clientName?: string;
   work?: number;
   workDescription?: string;
   type: 'IN' | 'OUT';
