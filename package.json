@@ -6,9 +6,12 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint .",
     "test": "tsc app/api/stamp/validator.ts lib/airtableSchema.ts src/lib/excel/freeUserColumns.ts --module nodenext --target es2020 --moduleResolution nodenext --esModuleInterop --outDir tests/dist && cp tests/dist/app/api/stamp/validator.js tests/dist/validator.js && node --test tests/*.test.mjs",
-    "diag:p1": "tsx scripts/p1-diagnostics.ts"
+    "diag:p1": "tsx scripts/p1-diagnostics.ts",
+    "lint:ci": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test:ci": "node --test tests/**/*.test.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
