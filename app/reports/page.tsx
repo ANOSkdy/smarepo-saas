@@ -1,14 +1,12 @@
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
-
 import ReportsTabs from '@/components/reports/ReportsTabs';
 import { usersTable } from '@/lib/airtable';
 import type { ReportRow } from '@/lib/reports/pair';
 import { getReportRowsByUserName } from '@/lib/services/reports';
 
-import './print-a4.css';
+import PrintA4Button from '@/components/PrintA4Button';
 
-const PrintA4Button = dynamic(() => import('@/components/PrintA4Button'), { ssr: false });
+import './print-a4.css';
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
