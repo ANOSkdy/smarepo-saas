@@ -4,6 +4,7 @@ import './sites.css';
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import ReportsTabs from '@/components/reports/ReportsTabs';
+import { formatHoursOrEmpty, getJstParts } from '@/lib/jstDate';
 import WorkTypeCheckboxGroup from './_components/WorkTypeCheckboxGroup';
 
 type SiteMaster = {
@@ -45,13 +46,6 @@ type ReportResponse = {
 const today = new Date();
 const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 const MIN_DYNAMIC_COLUMNS = 8;
-
-function formatHours(value: number | null | undefined) {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  return `${Number(value).toFixed(1)}h`;
-}
 
 function toText(value: unknown) {
   return typeof value === 'string' ? value : '';
@@ -272,23 +266,26 @@ export default function SiteReportPage() {
               </tr>
             </thead>
             <tbody>
-              {days.map((row) => (
-                <tr key={row.date}>
-                  <td className="col-narrow border px-2 py-1 text-right">{row.day}</td>
-                  <td className="col-narrow border px-2 py-1 text-center">{row.dow}</td>
-                  {row.values.map((value, index) => (
-                    <td
-                      key={`${row.date}-${columns[index]?.key ?? index}`}
-                      className="border px-2 py-1 text-right tabular-nums"
-                    >
-                      {value === null || value === undefined ? '' : formatHours(value)}
-                    </td>
-                  ))}
-                  {Array.from({ length: columnPaddingCount }).map((_, index) => (
-                    <td key={`pad-${row.date}-${index}`} className="border px-2 py-1" aria-hidden="true" />
-                  ))}
-                </tr>
-              ))}
+              {days.map((row) => {
+                const { day, weekdayJp } = getJstParts(row.date);
+                return (
+                  <tr key={row.date}>
+                    <td className="col-narrow border px-2 py-1 text-right">{day}</td>
+                    <td className="col-narrow border px-2 py-1 text-center">{weekdayJp}</td>
+                    {row.values.map((value, index) => (
+                      <td
+                        key={`${row.date}-${columns[index]?.key ?? index}`}
+                        className="border px-2 py-1 text-right tabular-nums"
+                      >
+                        {formatHoursOrEmpty(value)}
+                      </td>
+                    ))}
+                    {Array.from({ length: columnPaddingCount }).map((_, index) => (
+                      <td key={`pad-${row.date}-${index}`} className="border px-2 py-1" aria-hidden="true" />
+                    ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
