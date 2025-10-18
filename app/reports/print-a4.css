@@ -1,0 +1,69 @@
+/**
+ * reports専用の印刷スタイル
+ * スコープ: .report-print 内のみ有効
+ * 目的: A4縦での紙/PDF出力最適化
+ */
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+/* 画面では通常表示、印刷時に最適化 */
+@media print {
+  /* ページ全体の背景色や余白の揺れを抑制 */
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  /* reports内に限定してレイアウト最適化 */
+  .report-print {
+    font-size: 12px;
+    line-height: 1.4;
+    color: #000;
+  }
+
+  /* 操作用UIは印刷時に非表示（例: ボタン群、タブ等） */
+  .report-print ._print-hidden {
+    display: none !important;
+  }
+
+  /* テーブルの改ページ最適化 */
+  .report-print table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .report-print thead {
+    display: table-header-group;
+  }
+  .report-print tfoot {
+    display: table-footer-group;
+  }
+  .report-print tr,
+  .report-print td,
+  .report-print th {
+    page-break-inside: avoid;
+  }
+  .report-print th,
+  .report-print td {
+    border: 1px solid #000;
+    padding: 4px 6px;
+  }
+
+  /* 小数点・数字の見やすさ向上（任意） */
+  .report-print .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* 画面専用の軽微な整形（印刷には影響しない） */
+@media screen {
+  .report-print ._print-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+  }
+}
