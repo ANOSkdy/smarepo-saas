@@ -26,3 +26,9 @@
   min-width: 4.5rem;
   max-width: 4.5rem;
 }
+
+@media screen {
+  .screen-hidden {
+    display: none !important;
+  }
+}

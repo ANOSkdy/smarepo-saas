@@ -2,7 +2,7 @@
 
 import './sites.css';
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ChangeEvent } from 'react';
 import ReportsTabs from '@/components/reports/ReportsTabs';
 import PrintControls from '@/components/PrintControls';
 import { formatHoursOrEmpty, getJstParts } from '@/lib/jstDate';
@@ -65,7 +65,7 @@ export default function SiteReportPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reportLoaded, setReportLoaded] = useState(false);
-  const [employeeFilter, setEmployeeFilter] = useState('');
+  const [employeeFilter, setEmployeeFilter] = useState<string[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -136,21 +136,52 @@ export default function SiteReportPage() {
     [columns],
   );
 
-  const visibleColumns = useMemo(() => {
-    if (!employeeFilter) {
-      return indexedColumns;
-    }
-    return indexedColumns.filter(({ column }) => column.userName === employeeFilter);
-  }, [employeeFilter, indexedColumns]);
+  useEffect(() => {
+    setEmployeeFilter((prev) => {
+      if (prev.length === 0) {
+        return prev;
+      }
+      const valid = prev.filter((name) => employeeOptions.includes(name));
+      return valid.length === prev.length ? prev : valid;
+    });
+  }, [employeeOptions]);
 
-  const columnPaddingCount = Math.max(0, MIN_DYNAMIC_COLUMNS - visibleColumns.length);
+  const selectedEmployeeSet = useMemo(() => new Set(employeeFilter), [employeeFilter]);
+  const hasEmployeeFilter = selectedEmployeeSet.size > 0;
+
+  const visibleColumnCount = useMemo(() => {
+    if (!hasEmployeeFilter) {
+      return indexedColumns.length;
+    }
+    const selected = new Set(employeeFilter);
+    let count = 0;
+    indexedColumns.forEach(({ column }) => {
+      if (selected.has(column.userName)) {
+        count += 1;
+      }
+    });
+    return count;
+  }, [employeeFilter, hasEmployeeFilter, indexedColumns]);
+
+  const columnPaddingCount = Math.max(0, MIN_DYNAMIC_COLUMNS - visibleColumnCount);
   const tableStyle = useMemo(
     () =>
       ({
-        '--reports-min-cols': String(Math.max(MIN_DYNAMIC_COLUMNS, visibleColumns.length)),
+        '--reports-min-cols': String(Math.max(MIN_DYNAMIC_COLUMNS, visibleColumnCount || MIN_DYNAMIC_COLUMNS)),
       }) as CSSProperties & { '--reports-min-cols': string },
-    [visibleColumns.length],
+    [visibleColumnCount],
   );
+
+  const handleEmployeeFilterChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const values = Array.from(event.target.selectedOptions)
+      .map((option) => option.value)
+      .filter((name) => name);
+    setEmployeeFilter(values);
+  };
+
+  const handleEmployeeFilterReset = () => {
+    setEmployeeFilter([]);
+  };
 
   async function loadReport() {
     if (!siteId || !Number.isFinite(year) || !Number.isFinite(month)) {
@@ -182,7 +213,7 @@ export default function SiteReportPage() {
       const data = (await response.json()) as ReportResponse;
       setColumns(Array.isArray(data.columns) ? data.columns : []);
       setDays(Array.isArray(data.days) ? data.days : []);
-      setEmployeeFilter('');
+      setEmployeeFilter([]);
       if (data.site?.client) {
         setSiteClient(data.site.client);
       }
@@ -265,15 +296,16 @@ export default function SiteReportPage() {
 
       {reportLoaded ? (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3 print-hide">
-            <label className="flex items-center gap-2 text-sm">
-              <span>従業員名</span>
+          <div className="flex flex-wrap items-start gap-3 print-hide">
+            <label className="flex flex-col gap-2 text-sm">
+              <span className="font-medium">従業員名（複数選択可）</span>
               <select
-                className="rounded border px-2 py-1"
+                multiple
+                size={Math.min(6, Math.max(4, employeeOptions.length))}
+                className="rounded border px-2 py-1 min-w-48"
                 value={employeeFilter}
-                onChange={(event) => setEmployeeFilter(event.target.value)}
+                onChange={handleEmployeeFilterChange}
               >
-                <option value="">（全員）</option>
                 {employeeOptions.map((name) => (
                   <option key={name} value={name}>
                     {name}
@@ -281,7 +313,17 @@ export default function SiteReportPage() {
                 ))}
               </select>
             </label>
-            <PrintControls className="ml-auto" title="現場別集計（A4）" />
+            <div className="flex flex-1 flex-wrap items-start gap-3">
+              <button
+                type="button"
+                onClick={handleEmployeeFilterReset}
+                className="rounded border px-3 py-1 text-sm"
+                disabled={!hasEmployeeFilter}
+              >
+                全員を表示
+              </button>
+              <PrintControls className="ml-auto" title="現場別集計（A4）" />
+            </div>
           </div>
           <div className="overflow-x-auto rounded border">
             <table className="table-unified text-sm print-avoid-break" style={tableStyle}>
@@ -289,11 +331,17 @@ export default function SiteReportPage() {
                 <tr className="bg-gray-50">
                   <th className="col-narrow border px-2 py-1 text-right">日</th>
                   <th className="col-narrow border px-2 py-1 text-center">曜</th>
-                  {visibleColumns.map(({ column }) => (
-                    <th key={`user-${column.key}`} className="border px-2 py-1 text-left">
-                      {column.userName}
-                    </th>
-                  ))}
+                  {indexedColumns.map(({ column }) => {
+                    const hidden = hasEmployeeFilter && !selectedEmployeeSet.has(column.userName);
+                    const className = hidden
+                      ? 'border px-2 py-1 text-left screen-hidden'
+                      : 'border px-2 py-1 text-left';
+                    return (
+                      <th key={`user-${column.key}`} className={className}>
+                        {column.userName}
+                      </th>
+                    );
+                  })}
                   {Array.from({ length: columnPaddingCount }).map((_, index) => (
                     <th key={`user-pad-${index}`} className="border px-2 py-1" aria-hidden="true" />
                   ))}
@@ -301,11 +349,17 @@ export default function SiteReportPage() {
                 <tr className="bg-gray-50">
                   <th className="col-narrow border px-2 py-1" />
                   <th className="col-narrow border px-2 py-1" />
-                  {visibleColumns.map(({ column }) => (
-                    <th key={`work-${column.key}`} className="border px-2 py-1 text-left">
-                      {column.workDescription}
-                    </th>
-                  ))}
+                  {indexedColumns.map(({ column }) => {
+                    const hidden = hasEmployeeFilter && !selectedEmployeeSet.has(column.userName);
+                    const className = hidden
+                      ? 'border px-2 py-1 text-left screen-hidden'
+                      : 'border px-2 py-1 text-left';
+                    return (
+                      <th key={`work-${column.key}`} className={className}>
+                        {column.workDescription}
+                      </th>
+                    );
+                  })}
                   {Array.from({ length: columnPaddingCount }).map((_, index) => (
                     <th key={`work-pad-${index}`} className="border px-2 py-1" aria-hidden="true" />
                   ))}
@@ -318,14 +372,17 @@ export default function SiteReportPage() {
                     <tr key={row.date}>
                       <td className="col-narrow border px-2 py-1 text-right">{day}</td>
                       <td className="col-narrow border px-2 py-1 text-center">{weekdayJp}</td>
-                      {visibleColumns.map(({ column, index }) => (
-                        <td
-                          key={`${row.date}-${column.key}`}
-                          className="border px-2 py-1 text-right tabular-nums"
-                        >
-                          {formatHoursOrEmpty(row.values[index] ?? null)}
-                        </td>
-                      ))}
+                      {indexedColumns.map(({ column, index }) => {
+                        const hidden = hasEmployeeFilter && !selectedEmployeeSet.has(column.userName);
+                        const className = hidden
+                          ? 'border px-2 py-1 text-right tabular-nums screen-hidden'
+                          : 'border px-2 py-1 text-right tabular-nums';
+                        return (
+                          <td key={`${row.date}-${column.key}`} className={className}>
+                            {formatHoursOrEmpty(row.values[index] ?? null)}
+                          </td>
+                        );
+                      })}
                       {Array.from({ length: columnPaddingCount }).map((_, index) => (
                         <td key={`pad-${row.date}-${index}`} className="border px-2 py-1" aria-hidden="true" />
                       ))}
