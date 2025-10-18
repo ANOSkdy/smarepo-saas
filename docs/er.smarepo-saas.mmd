@@ -1,0 +1,15 @@
+erDiagram
+  Users ||--o{ Logs : has
+  Machines ||--o{ Logs : writes
+  Sites ||--o{ Logs : located_at
+  WorkTypes ||--o{ Logs : describes
+  Logs ||--o{ Session : pairs_with
+  Sites ||--o{ Projects : scoped_to
+
+  Users { string userId; string username; string name; string role; bool active }
+  Machines { string machineid; string name; bool active }
+  Sites { string siteId; string name; number lat; number lon; string polygon_geojson; bool active }
+  WorkTypes { string workId; string name; number sortOrder; bool active }
+  Logs { string timestamp; string date; string type; string workDescription; number lat; number lon; number accuracy }
+  Session { number year; number month; number day; number hours }
+  Projects { string projectId; string name; string status }

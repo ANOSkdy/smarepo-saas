@@ -1,0 +1,7 @@
+# 例: チーム/個人に合わせて編集
+# 主要API/セキュリティ関連は必ずレビュワーを付ける
+/app/api/*       @org/backend-leads
+/src/lib/*       @org/backend-leads
+/components/*    @org/frontend-leads
+/.github/*       @org/devxp
+*               @org/pm
