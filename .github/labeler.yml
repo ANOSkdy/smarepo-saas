@@ -1,0 +1,8 @@
+"area:api":
+  - any: ['app/api/**', 'src/lib/**']
+"area:ui":
+  - any: ['app/**', 'components/**']
+"area:infra":
+  - any: ['.github/**', 'vercel.json', 'next.config.*', 'eslint.*', 'tsconfig.*']
+"priority:P0":
+  - any: ['app/api/**', 'src/lib/**']
