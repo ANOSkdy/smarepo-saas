@@ -18,6 +18,15 @@
     table-layout: fixed;
   }
 
+  .table-unified {
+    --reports-col-width: 6.5rem !important;
+  }
+
+  .table-unified thead th,
+  .table-unified tbody td {
+    white-space: normal !important;
+  }
+
   .screen-hidden {
     display: table-cell !important;
   }

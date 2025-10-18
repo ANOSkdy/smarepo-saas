@@ -47,6 +47,8 @@ type ReportResponse = {
 const today = new Date();
 const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 const MIN_DYNAMIC_COLUMNS = 8;
+// 印刷時に1ページへ収める動的列の最大数（固定列2を含めて8列想定）
+const PRINT_COLUMNS_PER_PAGE = 6;
 
 function toText(value: unknown) {
   return typeof value === 'string' ? value : '';
@@ -171,6 +173,18 @@ export default function SiteReportPage() {
       }) as CSSProperties & { '--reports-min-cols': string },
     [visibleColumnCount],
   );
+
+  const printColumnChunks = useMemo(() => {
+    const chunkSize = PRINT_COLUMNS_PER_PAGE;
+    const result: { column: ReportColumn; index: number }[][] = [];
+    for (let i = 0; i < indexedColumns.length; i += chunkSize) {
+      result.push(indexedColumns.slice(i, i + chunkSize));
+    }
+    if (result.length === 0) {
+      return [[]] as { column: ReportColumn; index: number }[][];
+    }
+    return result;
+  }, [indexedColumns]);
 
   const handleEmployeeFilterChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const values = Array.from(event.target.selectedOptions)
@@ -325,73 +339,131 @@ export default function SiteReportPage() {
               <PrintControls className="ml-auto" title="現場別集計（A4）" />
             </div>
           </div>
-          <div className="overflow-x-auto rounded border">
-            <table className="table-unified text-sm print-avoid-break" style={tableStyle}>
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="col-narrow border px-2 py-1 text-right">日</th>
-                  <th className="col-narrow border px-2 py-1 text-center">曜</th>
-                  {indexedColumns.map(({ column }) => {
-                    const hidden = hasEmployeeFilter && !selectedEmployeeSet.has(column.userName);
-                    const className = hidden
-                      ? 'border px-2 py-1 text-left screen-hidden'
-                      : 'border px-2 py-1 text-left';
+          <div className="screen-table-wrapper">
+            <div className="overflow-x-auto rounded border">
+              <table className="table-unified text-sm print-avoid-break" style={tableStyle}>
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="col-narrow border px-2 py-1 text-right">日</th>
+                    <th className="col-narrow border px-2 py-1 text-center">曜</th>
+                    {indexedColumns.map(({ column }) => {
+                      const hidden = hasEmployeeFilter && !selectedEmployeeSet.has(column.userName);
+                      const className = hidden
+                        ? 'border px-2 py-1 text-left screen-hidden'
+                        : 'border px-2 py-1 text-left';
+                      return (
+                        <th key={`user-${column.key}`} className={className}>
+                          {column.userName}
+                        </th>
+                      );
+                    })}
+                    {Array.from({ length: columnPaddingCount }).map((_, index) => (
+                      <th key={`user-pad-${index}`} className="border px-2 py-1" aria-hidden="true" />
+                    ))}
+                  </tr>
+                  <tr className="bg-gray-50">
+                    <th className="col-narrow border px-2 py-1" />
+                    <th className="col-narrow border px-2 py-1" />
+                    {indexedColumns.map(({ column }) => {
+                      const hidden = hasEmployeeFilter && !selectedEmployeeSet.has(column.userName);
+                      const className = hidden
+                        ? 'border px-2 py-1 text-left screen-hidden'
+                        : 'border px-2 py-1 text-left';
+                      return (
+                        <th key={`work-${column.key}`} className={className}>
+                          {column.workDescription}
+                        </th>
+                      );
+                    })}
+                    {Array.from({ length: columnPaddingCount }).map((_, index) => (
+                      <th key={`work-pad-${index}`} className="border px-2 py-1" aria-hidden="true" />
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {days.map((row) => {
+                    const { day, weekdayJp } = getJstParts(row.date);
                     return (
-                      <th key={`user-${column.key}`} className={className}>
-                        {column.userName}
-                      </th>
+                      <tr key={row.date}>
+                        <td className="col-narrow border px-2 py-1 text-right">{day}</td>
+                        <td className="col-narrow border px-2 py-1 text-center">{weekdayJp}</td>
+                        {indexedColumns.map(({ column, index }) => {
+                          const hidden = hasEmployeeFilter && !selectedEmployeeSet.has(column.userName);
+                          const className = hidden
+                            ? 'border px-2 py-1 text-right tabular-nums screen-hidden'
+                            : 'border px-2 py-1 text-right tabular-nums';
+                          return (
+                            <td key={`${row.date}-${column.key}`} className={className}>
+                              {formatHoursOrEmpty(row.values[index] ?? null)}
+                            </td>
+                          );
+                        })}
+                        {Array.from({ length: columnPaddingCount }).map((_, index) => (
+                          <td key={`pad-${row.date}-${index}`} className="border px-2 py-1" aria-hidden="true" />
+                        ))}
+                      </tr>
                     );
                   })}
-                  {Array.from({ length: columnPaddingCount }).map((_, index) => (
-                    <th key={`user-pad-${index}`} className="border px-2 py-1" aria-hidden="true" />
-                  ))}
-                </tr>
-                <tr className="bg-gray-50">
-                  <th className="col-narrow border px-2 py-1" />
-                  <th className="col-narrow border px-2 py-1" />
-                  {indexedColumns.map(({ column }) => {
-                    const hidden = hasEmployeeFilter && !selectedEmployeeSet.has(column.userName);
-                    const className = hidden
-                      ? 'border px-2 py-1 text-left screen-hidden'
-                      : 'border px-2 py-1 text-left';
-                    return (
-                      <th key={`work-${column.key}`} className={className}>
-                        {column.workDescription}
-                      </th>
-                    );
-                  })}
-                  {Array.from({ length: columnPaddingCount }).map((_, index) => (
-                    <th key={`work-pad-${index}`} className="border px-2 py-1" aria-hidden="true" />
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {days.map((row) => {
-                  const { day, weekdayJp } = getJstParts(row.date);
-                  return (
-                    <tr key={row.date}>
-                      <td className="col-narrow border px-2 py-1 text-right">{day}</td>
-                      <td className="col-narrow border px-2 py-1 text-center">{weekdayJp}</td>
-                      {indexedColumns.map(({ column, index }) => {
-                        const hidden = hasEmployeeFilter && !selectedEmployeeSet.has(column.userName);
-                        const className = hidden
-                          ? 'border px-2 py-1 text-right tabular-nums screen-hidden'
-                          : 'border px-2 py-1 text-right tabular-nums';
-                        return (
-                          <td key={`${row.date}-${column.key}`} className={className}>
-                            {formatHoursOrEmpty(row.values[index] ?? null)}
-                          </td>
-                        );
-                      })}
-                      {Array.from({ length: columnPaddingCount }).map((_, index) => (
-                        <td key={`pad-${row.date}-${index}`} className="border px-2 py-1" aria-hidden="true" />
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
           </div>
+          {printColumnChunks.length > 0 ? (
+            <div className="print-table-wrapper">
+              {printColumnChunks.map((chunk, chunkIndex) => {
+                const chunkStyle = {
+                  '--reports-min-cols': String(2 + chunk.length),
+                } as CSSProperties & { '--reports-min-cols': string };
+                const blockClassName =
+                  chunkIndex === 0 ? 'print-table-block' : 'print-table-block print-break-before';
+                return (
+                  <div key={`print-chunk-${chunkIndex}`} className={blockClassName}>
+                    <table className="table-unified text-sm print-avoid-break" style={chunkStyle}>
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="col-narrow border px-2 py-1 text-right">日</th>
+                          <th className="col-narrow border px-2 py-1 text-center">曜</th>
+                          {chunk.map(({ column }) => (
+                            <th key={`print-user-${column.key}`} className="border px-2 py-1 text-left">
+                              {column.userName}
+                            </th>
+                          ))}
+                        </tr>
+                        <tr className="bg-gray-50">
+                          <th className="col-narrow border px-2 py-1" />
+                          <th className="col-narrow border px-2 py-1" />
+                          {chunk.map(({ column }) => (
+                            <th key={`print-work-${column.key}`} className="border px-2 py-1 text-left">
+                              {column.workDescription}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {days.map((row) => {
+                          const { day, weekdayJp } = getJstParts(row.date);
+                          return (
+                            <tr key={`${row.date}-chunk-${chunkIndex}`}>
+                              <td className="col-narrow border px-2 py-1 text-right">{day}</td>
+                              <td className="col-narrow border px-2 py-1 text-center">{weekdayJp}</td>
+                              {chunk.map(({ column, index }) => (
+                                <td
+                                  key={`${row.date}-print-${column.key}`}
+                                  className="border px-2 py-1 text-right tabular-nums"
+                                >
+                                  {formatHoursOrEmpty(row.values[index] ?? null)}
+                                </td>
+                              ))}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       ) : (
         <p className="text-sm text-gray-500">条件を選択し「集計する」を押すと結果が表示されます。</p>
