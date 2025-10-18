@@ -1,0 +1,48 @@
+/* --- Print stylesheet for reports A4 portrait --- */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  .print-hide,
+  header,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    table-layout: fixed;
+  }
+
+  .table-unified {
+    --reports-col-width: 6.5rem !important;
+  }
+
+  .table-unified thead th,
+  .table-unified tbody td {
+    white-space: normal !important;
+  }
+
+  .screen-hidden {
+    display: table-cell !important;
+  }
+
+  th,
+  td {
+    border: 1px solid #888 !important;
+    padding: 4px 6px !important;
+    word-break: break-all;
+  }
+
+  .print-break-before {
+    break-before: page;
+  }
+
+  .print-avoid-break {
+    break-inside: avoid;
+  }
+}

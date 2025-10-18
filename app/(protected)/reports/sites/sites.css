@@ -26,3 +26,35 @@
   min-width: 4.5rem;
   max-width: 4.5rem;
 }
+
+@media screen {
+  .screen-hidden {
+    display: none !important;
+  }
+}
+
+.screen-table-wrapper {
+  display: block;
+}
+
+.print-table-wrapper {
+  display: none;
+}
+
+.print-table-block {
+  margin-bottom: 12mm;
+}
+
+@media print {
+  .screen-table-wrapper {
+    display: none !important;
+  }
+
+  .print-table-wrapper {
+    display: block !important;
+  }
+
+  .print-table-wrapper .print-table-block {
+    break-inside: avoid;
+  }
+}

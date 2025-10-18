@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import './reports-print.css';
 import NextAuthSessionProvider from '@/components/SessionProvider';
 import SkipLink from '@/components/SkipLink';
 import NavTabs from '@/components/NavTabs';
