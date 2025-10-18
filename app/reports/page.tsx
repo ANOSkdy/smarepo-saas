@@ -5,6 +5,8 @@ import { usersTable } from '@/lib/airtable';
 import type { ReportRow } from '@/lib/reports/pair';
 import { getReportRowsByUserName } from '@/lib/services/reports';
 
+import './print.css';
+
 type SearchParams = Record<string, string | string[] | undefined>;
 
 async function fetchUsers(): Promise<string[]> {
@@ -77,15 +79,62 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
     new Set(rowsRaw.map((row) => row.siteName).filter((name): name is string => Boolean(name && name.trim()))),
   ).sort((a, b) => a.localeCompare(b, 'ja'));
 
+  const reportTitle = filters.user ? `${filters.user}さんの個別集計レポート` : '個別集計レポート';
+  const printedAt = new Intl.DateTimeFormat('ja-JP', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date());
+
   return (
-    <main className="mx-auto max-w-5xl space-y-6 p-6">
-      <ReportsTabs />
-      <header className="space-y-2">
+    <main className="mx-auto max-w-5xl space-y-6 p-6 print:m-0 print:max-w-none print:space-y-4 print:bg-white print:p-0">
+      <div className="print:hidden">
+        <ReportsTabs />
+      </div>
+      <header className="space-y-2 print:space-y-1">
         <h1 className="text-2xl font-semibold text-gray-900">個別集計</h1>
         <p className="text-sm text-gray-600">従業員ごとの IN/OUT ペアリングから稼働時間を算出します。</p>
       </header>
 
-      <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6" method="get">
+      <section className="hidden border-b border-gray-200 pb-4 print:block">
+        <div className="flex flex-col justify-between gap-1 text-xs text-gray-600 print:flex-row print:items-end print:text-[11pt]">
+          <span className="font-semibold text-gray-800 print:text-[12pt]">{reportTitle}</span>
+          <span>出力日時: {printedAt}</span>
+        </div>
+        {filters.user && (
+          <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-[10pt] text-gray-600">
+            <div>
+              <dt className="font-medium text-gray-700">従業員</dt>
+              <dd>{filters.user}</dd>
+            </div>
+            {filters.site && (
+              <div>
+                <dt className="font-medium text-gray-700">現場名</dt>
+                <dd>{filters.site}</dd>
+              </div>
+            )}
+            {filters.year && (
+              <div>
+                <dt className="font-medium text-gray-700">年</dt>
+                <dd>{filters.year}</dd>
+              </div>
+            )}
+            {filters.month && (
+              <div>
+                <dt className="font-medium text-gray-700">月</dt>
+                <dd>{filters.month}</dd>
+              </div>
+            )}
+            {filters.day && (
+              <div>
+                <dt className="font-medium text-gray-700">日</dt>
+                <dd>{filters.day}</dd>
+              </div>
+            )}
+          </dl>
+        )}
+      </section>
+
+      <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6 print:hidden" method="get">
         <div className="flex flex-col">
           <label htmlFor="user" className="text-sm font-medium text-gray-700">
             従業員名
@@ -199,7 +248,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
         </div>
       </form>
 
-      <div className="flex items-center justify-between text-xs text-gray-500">
+      <div className="flex items-center justify-between text-xs text-gray-500 print:hidden">
         <span>※ ソート機能は提供していません。上部のフィルターで条件を指定してください。</span>
         <Link href="/reports" className="text-indigo-600 underline">
           条件をクリア
@@ -207,46 +256,51 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
       </div>
 
       {filters.user && (
-        <section className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200">
-            <thead className="bg-gray-50">
-              <tr className="text-sm text-gray-700">
-                <th scope="col" className="px-4 py-3 text-left font-semibold">
+        <section className="overflow-x-auto print:overflow-visible">
+          <table className="min-w-full divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 print:min-w-0 print:border print:text-[11pt]">
+            <thead className="bg-gray-50 print:bg-white">
+              <tr className="text-sm text-gray-700 print:text-[11pt]">
+                <th scope="col" className="px-4 py-3 text-left font-semibold print:px-3 print:py-2">
                   年
                 </th>
-                <th scope="col" className="px-4 py-3 text-left font-semibold">
+                <th scope="col" className="px-4 py-3 text-left font-semibold print:px-3 print:py-2">
                   月
                 </th>
-                <th scope="col" className="px-4 py-3 text-left font-semibold">
+                <th scope="col" className="px-4 py-3 text-left font-semibold print:px-3 print:py-2">
                   日
                 </th>
-                <th scope="col" className="px-4 py-3 text-left font-semibold">
+                <th scope="col" className="px-4 py-3 text-left font-semibold print:px-3 print:py-2">
                   現場名
                 </th>
-                <th scope="col" className="px-4 py-3 text-left font-semibold">
+                <th scope="col" className="px-4 py-3 text-left font-semibold print:px-3 print:py-2">
                   元請・代理人
                 </th>
-                <th scope="col" className="px-4 py-3 text-left font-semibold">
+                <th scope="col" className="px-4 py-3 text-left font-semibold print:px-3 print:py-2">
                   稼働時間
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white text-sm text-gray-900">
+            <tbody className="divide-y divide-gray-200 bg-white text-sm text-gray-900 print:text-[10pt]">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500 print:px-3 print:py-4">
                     条件に一致するデータがありません。
                   </td>
                 </tr>
               ) : (
                 filteredRows.map((row, index) => (
-                  <tr key={`${row.year}-${row.month}-${row.day}-${row.siteName}-${index}`} className="odd:bg-white even:bg-gray-50">
-                    <td className="px-4 py-3">{row.year}</td>
-                    <td className="px-4 py-3">{row.month}</td>
-                    <td className="px-4 py-3">{row.day}</td>
-                    <td className="px-4 py-3">{row.siteName}</td>
-                    <td className="px-4 py-3">{row.clientName ?? ''}</td>
-                    <td className="px-4 py-3 font-mono text-sm">{formatMinutes(row.minutes)}</td>
+                  <tr
+                    key={`${row.year}-${row.month}-${row.day}-${row.siteName}-${index}`}
+                    className="odd:bg-white even:bg-gray-50 print:break-inside-avoid"
+                  >
+                    <td className="px-4 py-3 print:px-3 print:py-2">{row.year}</td>
+                    <td className="px-4 py-3 print:px-3 print:py-2">{row.month}</td>
+                    <td className="px-4 py-3 print:px-3 print:py-2">{row.day}</td>
+                    <td className="px-4 py-3 print:px-3 print:py-2">{row.siteName}</td>
+                    <td className="px-4 py-3 print:px-3 print:py-2">{row.clientName ?? ''}</td>
+                    <td className="px-4 py-3 font-mono text-sm print:px-3 print:py-2 print:text-[10pt]">
+                      {formatMinutes(row.minutes)}
+                    </td>
                   </tr>
                 ))
               )}
