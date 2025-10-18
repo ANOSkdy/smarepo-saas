@@ -1,0 +1,28 @@
+:root {
+  --reports-col-width: 10.5rem;
+  --reports-min-cols: 8;
+}
+
+.table-unified {
+  table-layout: fixed;
+  width: 100%;
+  min-width: calc(var(--reports-col-width) * var(--reports-min-cols));
+}
+
+.table-unified thead th,
+.table-unified tbody td {
+  min-width: var(--reports-col-width);
+  max-width: var(--reports-col-width);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-unified tbody td {
+  vertical-align: middle;
+}
+
+.table-unified .col-narrow {
+  min-width: 4.5rem;
+  max-width: 4.5rem;
+}

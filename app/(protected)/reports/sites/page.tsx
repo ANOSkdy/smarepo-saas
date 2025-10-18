@@ -1,7 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import './sites.css';
+
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import ReportsTabs from '@/components/reports/ReportsTabs';
+import WorkTypeCheckboxGroup from './_components/WorkTypeCheckboxGroup';
 
 type SiteMaster = {
   id: string;
@@ -41,6 +44,14 @@ type ReportResponse = {
 
 const today = new Date();
 const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+const MIN_DYNAMIC_COLUMNS = 8;
+
+function formatHours(value: number | null | undefined) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return `${Number(value).toFixed(1)}h`;
+}
 
 function toText(value: unknown) {
   return typeof value === 'string' ? value : '';
@@ -112,6 +123,15 @@ export default function SiteReportPage() {
         name: toText(work.fields.name),
       })),
     [works],
+  );
+
+  const columnPaddingCount = Math.max(0, MIN_DYNAMIC_COLUMNS - columns.length);
+  const tableStyle = useMemo(
+    () =>
+      ({
+        '--reports-min-cols': String(Math.max(MIN_DYNAMIC_COLUMNS, columns.length)),
+      }) as CSSProperties & { '--reports-min-cols': string },
+    [columns.length],
   );
 
   async function loadReport() {
@@ -199,24 +219,15 @@ export default function SiteReportPage() {
               readOnly
             />
           </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-sm text-gray-600">業務内容（複数選択）</span>
-            <select
-              multiple
-              className="h-32 rounded border px-3 py-2"
+          <div className="flex flex-col gap-1 xl:col-span-2">
+            <span className="text-sm text-gray-600">業務内容（チェック可）</span>
+            <WorkTypeCheckboxGroup
+              className="rounded border p-3"
+              options={workOptions}
               value={selectedWorkIds}
-              onChange={(event) => {
-                const values = Array.from(event.target.selectedOptions).map((option) => option.value);
-                setSelectedWorkIds(values);
-              }}
-            >
-              {workOptions.map((work) => (
-                <option key={work.id} value={work.id}>
-                  {work.name}
-                </option>
-              ))}
-            </select>
-          </label>
+              onChange={setSelectedWorkIds}
+            />
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -232,37 +243,49 @@ export default function SiteReportPage() {
       </div>
 
       {reportLoaded ? (
-        <div className="overflow-auto rounded border">
-          <table className="min-w-full text-sm">
+        <div className="overflow-x-auto rounded border">
+          <table className="table-unified text-sm" style={tableStyle}>
             <thead>
               <tr className="bg-gray-50">
-                <th className="w-16 border px-2 py-1 text-right">日</th>
-                <th className="w-16 border px-2 py-1 text-center">曜</th>
+                <th className="col-narrow border px-2 py-1 text-right">日</th>
+                <th className="col-narrow border px-2 py-1 text-center">曜</th>
                 {columns.map((column) => (
                   <th key={`user-${column.key}`} className="border px-2 py-1 text-left">
                     {column.userName}
                   </th>
                 ))}
+                {Array.from({ length: columnPaddingCount }).map((_, index) => (
+                  <th key={`user-pad-${index}`} className="border px-2 py-1" aria-hidden="true" />
+                ))}
               </tr>
               <tr className="bg-gray-50">
-                <th className="border px-2 py-1" />
-                <th className="border px-2 py-1" />
+                <th className="col-narrow border px-2 py-1" />
+                <th className="col-narrow border px-2 py-1" />
                 {columns.map((column) => (
                   <th key={`work-${column.key}`} className="border px-2 py-1 text-left">
                     {column.workDescription}
                   </th>
+                ))}
+                {Array.from({ length: columnPaddingCount }).map((_, index) => (
+                  <th key={`work-pad-${index}`} className="border px-2 py-1" aria-hidden="true" />
                 ))}
               </tr>
             </thead>
             <tbody>
               {days.map((row) => (
                 <tr key={row.date}>
-                  <td className="border px-2 py-1 text-right">{row.day}</td>
-                  <td className="border px-2 py-1 text-center">{row.dow}</td>
+                  <td className="col-narrow border px-2 py-1 text-right">{row.day}</td>
+                  <td className="col-narrow border px-2 py-1 text-center">{row.dow}</td>
                   {row.values.map((value, index) => (
-                    <td key={`${row.date}-${columns[index]?.key ?? index}`} className="border px-2 py-1 text-right tabular-nums">
-                      {value ? value.toFixed(2) : ''}
+                    <td
+                      key={`${row.date}-${columns[index]?.key ?? index}`}
+                      className="border px-2 py-1 text-right tabular-nums"
+                    >
+                      {value === null || value === undefined ? '' : formatHours(value)}
                     </td>
+                  ))}
+                  {Array.from({ length: columnPaddingCount }).map((_, index) => (
+                    <td key={`pad-${row.date}-${index}`} className="border px-2 py-1" aria-hidden="true" />
                   ))}
                 </tr>
               ))}
