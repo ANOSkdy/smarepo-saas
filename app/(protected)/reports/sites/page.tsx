@@ -4,7 +4,7 @@ import './sites.css';
 
 import { useEffect, useMemo, useState, type CSSProperties, type ChangeEvent } from 'react';
 import ReportsTabs from '@/components/reports/ReportsTabs';
-import PrintControls from '@/components/PrintControls';
+import PrintButton from '@/components/PrintButton';
 import { formatHoursOrEmpty, getJstParts } from '@/lib/jstDate';
 import WorkTypeCheckboxGroup from './_components/WorkTypeCheckboxGroup';
 
@@ -245,9 +245,12 @@ export default function SiteReportPage() {
   const isReady = Boolean(siteId) && Number.isFinite(year) && Number.isFinite(month);
 
   return (
-    <div className="p-4 space-y-6">
+    <div className="space-y-6 p-4 print-area">
       <div className="print-hide">
         <ReportsTabs />
+      </div>
+      <div className="flex justify-end no-print">
+        <PrintButton />
       </div>
       <div className="space-y-4">
         <h1 className="text-2xl font-bold">現場別集計</h1>
@@ -327,18 +330,17 @@ export default function SiteReportPage() {
                 ))}
               </select>
             </label>
-            <div className="flex flex-1 flex-wrap items-start gap-3">
-              <button
-                type="button"
-                onClick={handleEmployeeFilterReset}
-                className="rounded border px-3 py-1 text-sm"
-                disabled={!hasEmployeeFilter}
-              >
-                全員を表示
-              </button>
-              <PrintControls className="ml-auto" title="現場別集計（A4）" />
-            </div>
+          <div className="flex flex-1 flex-wrap items-start gap-3">
+            <button
+              type="button"
+              onClick={handleEmployeeFilterReset}
+              className="rounded border px-3 py-1 text-sm"
+              disabled={!hasEmployeeFilter}
+            >
+              全員を表示
+            </button>
           </div>
+        </div>
           <div className="screen-table-wrapper">
             <div className="overflow-x-auto rounded border">
               <table className="table-unified text-sm print-avoid-break" style={tableStyle}>

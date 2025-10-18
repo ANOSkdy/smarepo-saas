@@ -171,3 +171,52 @@
     }
   }
 }
+
+/* ==== Print (A4 portrait) utilities for reports ==== */
+@media print {
+  /* A4縦・等倍。ブラウザごとに最小余白になるよう指定 */
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  /* 画面専用部品を非表示（ナビ・ボタン等） */
+  .no-print,
+  button.no-print,
+  .print-hide {
+    display: none !important;
+  }
+
+  /* 印刷領域を全幅に、背景は白 */
+  .print-area {
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  /* 表の折返し改善 */
+  table {
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  /* 見出しの改ページ制御 */
+  h1,
+  h2,
+  h3 {
+    page-break-after: avoid;
+  }
+}
+
+/* 明示的に改ページしたい場所に適用 */
+.page-break {
+  break-before: page;
+}

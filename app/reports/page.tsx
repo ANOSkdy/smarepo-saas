@@ -1,9 +1,12 @@
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 
 import ReportsTabs from '@/components/reports/ReportsTabs';
 import { usersTable } from '@/lib/airtable';
 import type { ReportRow } from '@/lib/reports/pair';
 import { getReportRowsByUserName } from '@/lib/services/reports';
+
+const PrintButton = dynamic(() => import('@/components/PrintButton'), { ssr: false });
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -78,12 +81,16 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
   ).sort((a, b) => a.localeCompare(b, 'ja'));
 
   return (
-    <main className="mx-auto max-w-5xl space-y-6 p-6">
+    <main className="mx-auto max-w-5xl space-y-6 p-6 print-area">
       <ReportsTabs />
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold text-gray-900">個別集計</h1>
         <p className="text-sm text-gray-600">従業員ごとの IN/OUT ペアリングから稼働時間を算出します。</p>
       </header>
+
+      <div className="flex justify-end no-print">
+        <PrintButton />
+      </div>
 
       <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6" method="get">
         <div className="flex flex-col">
