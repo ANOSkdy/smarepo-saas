@@ -19,6 +19,7 @@ export type NormalizedLog = {
   siteId: string | null;
   siteName: string | null;
   workType: string | null;
+  workDescriptions: string[];
   note: string | null;
   rawFields: Record<string, unknown>;
 };
@@ -146,6 +147,21 @@ function readLookupField(
   return null;
 }
 
+function extractWorkDescriptions(raw: unknown): string[] {
+  if (raw === null || raw === undefined) {
+    return [];
+  }
+  if (Array.isArray(raw)) {
+    const collected: string[] = [];
+    for (const entry of raw) {
+      collected.push(...extractWorkDescriptions(entry));
+    }
+    return collected;
+  }
+  const text = String(raw).trim();
+  return text.length === 0 ? [] : [text];
+}
+
 function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | null {
   const fields = record.fields as Record<string, unknown>;
   const typeRaw = fields[LOG_FIELDS.type];
@@ -179,6 +195,7 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
     : typeof fields[LOG_FIELDS.workDescription] === 'string'
     ? (fields[LOG_FIELDS.workDescription] as string)
     : null;
+  const workDescriptions = Array.from(new Set(extractWorkDescriptions(fields[LOG_FIELDS.workDescription])));
   const note = typeof fields[LOG_FIELDS.note] === 'string' ? (fields[LOG_FIELDS.note] as string) : null;
   const usernameField = typeof fields[LOG_FIELDS.username] === 'string' ? (fields[LOG_FIELDS.username] as string) : null;
   const userEmailField = (() => {
@@ -218,6 +235,7 @@ function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | nul
     siteId: siteLinks.length > 0 ? String(siteLinks[0]) : null,
     siteName,
     workType,
+    workDescriptions,
     note,
     rawFields: fields,
   };
@@ -315,9 +333,29 @@ function formatJstIso(timestampMs: number) {
   return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:${pad(second)}+09:00`;
 }
 
+function joinWorkDescriptions(values: Iterable<string>): string {
+  return Array.from(values).join(' / ');
+}
+
+function getWorkDescriptions(source: NormalizedLog | null | undefined): string[] {
+  if (!source) {
+    return [];
+  }
+  if (!Array.isArray(source.workDescriptions)) {
+    return [];
+  }
+  return source.workDescriptions
+    .map((value) => (typeof value === 'string' ? value.trim() : String(value).trim()))
+    .filter((value) => value.length > 0);
+}
+
 function resolveWorkDescription(source: NormalizedLog | null): string | null {
   if (!source) {
     return null;
+  }
+  const direct = getWorkDescriptions(source);
+  if (direct.length > 0) {
+    return joinWorkDescriptions(new Set(direct));
   }
   const work = typeof source.workType === 'string' ? source.workType.trim() : '';
   if (work) {
@@ -340,6 +378,65 @@ function createOpenSession(source: NormalizedLog): SessionDetail {
     machineName: source.machineName ?? null,
     workDescription: resolveWorkDescription(source),
   };
+}
+
+function toUserKey(source: NormalizedLog | null | undefined): string {
+  if (!source) {
+    return 'unknown-user';
+  }
+  return source.userId ?? source.userName ?? 'unknown-user';
+}
+
+function pickSessionWorkDescription(
+  logs: NormalizedLog[],
+  userKey: string,
+  startMs: number,
+  endMs: number,
+  endLog: NormalizedLog,
+): string | null {
+  const collected = new Set<string>();
+
+  for (const log of logs) {
+    if (log.timestampMs < startMs || log.timestampMs > endMs) {
+      continue;
+    }
+    if (toUserKey(log) !== userKey) {
+      continue;
+    }
+    for (const value of getWorkDescriptions(log)) {
+      collected.add(value);
+    }
+  }
+
+  if (collected.size > 0) {
+    return joinWorkDescriptions(collected);
+  }
+
+  if (toUserKey(endLog) === userKey) {
+    for (const value of getWorkDescriptions(endLog)) {
+      collected.add(value);
+    }
+    if (collected.size > 0) {
+      return joinWorkDescriptions(collected);
+    }
+  }
+
+  for (let index = logs.length - 1; index >= 0; index -= 1) {
+    const log = logs[index];
+    if (log.timestampMs > endMs) {
+      continue;
+    }
+    if (toUserKey(log) !== userKey) {
+      continue;
+    }
+    const values = getWorkDescriptions(log);
+    if (values.length === 0) {
+      continue;
+    }
+    return joinWorkDescriptions(new Set(values));
+  }
+
+  return null;
 }
 
 function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
@@ -371,6 +468,8 @@ function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
     }
 
     const durationHours = (log.timestampMs - currentOpen.timestampMs) / (1000 * 60 * 60);
+    const workDescription = pickSessionWorkDescription(sorted, userKey, currentOpen.timestampMs, log.timestampMs, log);
+
     sessions.push({
       userId: currentOpen.userId ?? log.userId ?? null,
       startMs: currentOpen.timestampMs,
@@ -385,8 +484,7 @@ function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
       status: '正常',
       machineId: currentOpen.machineId ?? log.machineId ?? null,
       machineName: currentOpen.machineName ?? log.machineName ?? null,
-      workDescription:
-        resolveWorkDescription(currentOpen) ?? resolveWorkDescription(log),
+      workDescription,
     });
     openSessions.set(userKey, null);
   }
