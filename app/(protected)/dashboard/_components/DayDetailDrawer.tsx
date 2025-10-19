@@ -10,6 +10,7 @@ type SessionRecord = {
   hours?: number | null;
   status: '正常' | '稼働中';
   machineId: string | null | undefined;
+  workDescription?: string | null;
 };
 
 type SessionGroup = {
@@ -259,6 +260,9 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
                                     {machineIdLabel.length > 0 ? machineIdLabel : '-'}
                                   </span>
                                 </div>
+                                <p className="mt-1 text-sm text-brand-muted">
+                                  業務内容 {session.workDescription ?? '—'}
+                                </p>
                               </div>
                             );
                           })}

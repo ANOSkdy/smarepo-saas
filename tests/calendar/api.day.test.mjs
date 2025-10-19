@@ -129,6 +129,7 @@ test('day API returns paired sessions without punches detail', async () => {
       siteId: 'site-1',
       siteName: '札幌第一',
       workType: '溶接',
+      workDescriptions: ['現場点検'],
       note: null,
       machineId: '1001',
       rawFields: {
@@ -146,6 +147,7 @@ test('day API returns paired sessions without punches detail', async () => {
       siteId: 'site-1',
       siteName: '札幌第一',
       workType: '溶接',
+      workDescriptions: ['報告'],
       note: '現地確認',
       machineId: '1001',
       rawFields: {
@@ -163,6 +165,7 @@ test('day API returns paired sessions without punches detail', async () => {
       siteId: 'site-2',
       siteName: '帯広東',
       workType: null,
+      workDescriptions: [],
       note: null,
       rawFields: {
         'userName (from user)': ['sato'],
@@ -179,6 +182,7 @@ test('day API returns paired sessions without punches detail', async () => {
       siteId: 'site-2',
       siteName: '帯広東',
       workType: null,
+      workDescriptions: ['荷卸し'],
       note: null,
       machineId: '2002',
       rawFields: {
@@ -196,6 +200,7 @@ test('day API returns paired sessions without punches detail', async () => {
       siteId: 'site-2',
       siteName: '帯広東',
       workType: null,
+      workDescriptions: ['検査'],
       note: null,
       machineId: '2002',
       rawFields: {
@@ -213,6 +218,7 @@ test('day API returns paired sessions without punches detail', async () => {
       siteId: 'site-1',
       siteName: '札幌第一',
       workType: '溶接',
+      workDescriptions: ['後処理'],
       note: null,
       machineId: '1001',
       rawFields: {
@@ -237,11 +243,13 @@ test('day API returns paired sessions without punches detail', async () => {
   assert.strictEqual(firstSession.hours, 7.5);
   assert.strictEqual(firstSession.status, '正常');
   assert.strictEqual(firstSession.machineId, '1001');
+  assert.strictEqual(firstSession.workDescription, '現場点検 / 報告');
   const secondSession = body.sessions[1];
   assert.strictEqual(secondSession.userName, 'sato');
   assert.strictEqual(secondSession.hours, 7);
   assert.strictEqual(secondSession.status, '正常');
   assert.strictEqual(secondSession.machineId, '2002');
+  assert.strictEqual(secondSession.workDescription, '荷卸し / 検査');
   const hasClosed = body.sessions.some((session) => session.status === '正常');
   assert.ok(hasClosed, 'closed session should exist');
   const hasOpen = body.sessions.some(
@@ -254,6 +262,7 @@ test('day API returns paired sessions without punches detail', async () => {
   assert.strictEqual('hours' in openSession, false);
   assert.strictEqual(openSession.clockInAt, '21:00');
   assert.strictEqual(openSession.machineId, '1001');
+  assert.strictEqual(openSession.workDescription, '後処理');
 });
 
 test('day API returns machineId from lookup field', async () => {
