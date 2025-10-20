@@ -1,6 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyTimeCalcV2FromMinutes, applyTimeCalcV2FromHours } from './timecalc';
+import { execSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const projectRoot = join(__dirname, '..');
+
+execSync(
+  'pnpm exec tsc src/lib/timecalc.ts --module nodenext --target es2020 --moduleResolution nodenext --esModuleInterop --outDir tests/dist --noEmit false',
+  { cwd: projectRoot, stdio: 'inherit' }
+);
+
+const {
+  applyTimeCalcV2FromMinutes,
+  applyTimeCalcV2FromHours,
+} = await import('./dist/src/lib/timecalc.js');
 
 process.env.TIME_CALC_VERSION = '2';
 process.env.TIME_CALC_ROUND_MINUTES = '15';
