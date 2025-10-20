@@ -39,3 +39,9 @@ test('時間入力（6.5h）でも同じ結果になる', () => {
   assert.equal(result.minutes, 300);
   assert.equal(result.hours, 5);
 });
+
+test('四半期切り上げ指定で 62 分が 75 分に丸められる', () => {
+  const result = applyTimeCalcV2FromMinutes(62, { breakMinutes: 0, roundMode: 'up' });
+  assert.equal(result.minutes, 75);
+  assert.equal(result.hours, 1.25);
+});

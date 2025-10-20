@@ -325,10 +325,6 @@ function formatJstTime(timestampMs: number) {
   return `${pad(hour)}:${pad(minute)}`;
 }
 
-function roundHours(value: number) {
-  return Math.round(value * 100) / 100;
-}
-
 function formatJstIso(timestampMs: number) {
   const { year, month, day, hour, minute, second } = toJstParts(timestampMs);
   return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:${pad(second)}+09:00`;
@@ -468,7 +464,8 @@ function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
       continue;
     }
 
-    const durationHours = (log.timestampMs - currentOpen.timestampMs) / (1000 * 60 * 60);
+    const durationMinutes = Math.max(0, Math.round((log.timestampMs - currentOpen.timestampMs) / 60000));
+    const { hours } = applyTimeCalcV2FromMinutes(durationMinutes, { breakMinutes: 0 });
     const workDescription = pickSessionWorkDescription(sorted, userKey, currentOpen.timestampMs, log.timestampMs, log);
 
     sessions.push({
@@ -481,7 +478,7 @@ function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
       siteName: currentOpen.siteName ?? log.siteName ?? null,
       clockInAt: formatJstTime(currentOpen.timestampMs),
       clockOutAt: formatJstTime(log.timestampMs),
-      hours: roundHours(durationHours),
+      hours,
       status: '正常',
       machineId: currentOpen.machineId ?? log.machineId ?? null,
       machineName: currentOpen.machineName ?? log.machineName ?? null,
