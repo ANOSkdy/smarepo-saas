@@ -8,6 +8,7 @@ import {
   escapeAirtable,
 } from '@/lib/airtable/schema';
 import { pairLogsByDay, type LogRecord, type ReportRow } from '@/lib/reports/pair';
+import { applyTimeCalcV2FromMinutes } from '@/src/lib/timecalc';
 
 type SortKey = 'year' | 'month' | 'day' | 'siteName';
 
@@ -90,9 +91,14 @@ export async function getReportRowsByUserName(
     })),
   );
 
+  const normalized = paired.map<ReportRow>((row) => ({
+    ...row,
+    minutes: applyTimeCalcV2FromMinutes(row.minutes).minutes,
+  }));
+
   if (sort) {
     const dir = order === 'desc' ? -1 : 1;
-    paired.sort((a, b) => {
+    normalized.sort((a, b) => {
       const aValue = a[sort];
       const bValue = b[sort];
       if (typeof aValue === 'string' && typeof bValue === 'string') {
@@ -107,5 +113,5 @@ export async function getReportRowsByUserName(
     });
   }
 
-  return paired;
+  return normalized;
 }

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { logsTable, sitesTable, usersTable } from '@/lib/airtable';
 import { resolveUserIdentity, resolveUserKey } from '@/lib/services/userIdentity';
+import { applyTimeCalcV2FromMinutes } from '@/src/lib/timecalc';
 import type { LogFields, SiteFields } from '@/types';
 
 const DOW = ['日', '月', '火', '水', '木', '金', '土'] as const;
@@ -174,7 +175,7 @@ export async function GET(req: NextRequest) {
       return ta - tb;
     });
     let lastIn: number | null = null;
-    let total = 0;
+    let totalMinutes = 0;
     for (const record of records) {
       const type = record.fields.type;
       const timestampMs = parseTimestampMs(record.fields.timestamp);
@@ -184,14 +185,15 @@ export async function GET(req: NextRequest) {
       if (type === 'IN') {
         lastIn = timestampMs;
       } else if (type === 'OUT' && lastIn !== null) {
-        const diffHours = (timestampMs - lastIn) / 3_600_000;
-        if (diffHours > 0 && diffHours < 24) {
-          total += diffHours;
+        const diffMinutes = Math.round((timestampMs - lastIn) / 60000);
+        if (diffMinutes > 0 && diffMinutes < 24 * 60) {
+          totalMinutes += diffMinutes;
         }
         lastIn = null;
       }
     }
-    hoursByKey.set(groupKey, Number(total.toFixed(2)));
+    const { hours } = applyTimeCalcV2FromMinutes(totalMinutes);
+    hoursByKey.set(groupKey, hours);
   }
 
   const days: DayRow[] = [];

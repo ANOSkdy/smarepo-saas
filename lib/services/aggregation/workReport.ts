@@ -3,6 +3,7 @@ import { logsTable, withRetry } from '@/lib/airtable';
 import { LOG_FIELDS } from '@/lib/airtable/schema';
 import type { LogFields } from '@/types';
 import { resolveUserIdentity, resolveUserKey } from '@/lib/services/userIdentity';
+import { normalizeDailyMinutes } from '@/src/lib/timecalc';
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
@@ -285,7 +286,11 @@ export async function getWorkReportByMonth(params: {
     result.push({
       userKey: key,
       days: Array.from(byDay.entries())
-        .map(([day, value]) => ({ day, totalMins: value.totalMins, breakdown: value.breakdown }))
+        .map(([day, value]) => ({
+          day,
+          totalMins: normalizeDailyMinutes(value.totalMins),
+          breakdown: value.breakdown,
+        }))
         .sort((a, b) => a.day.localeCompare(b.day)),
       unmatchedCount: unmatched.length,
     });
