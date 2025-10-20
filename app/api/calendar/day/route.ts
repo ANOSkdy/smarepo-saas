@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { buildDayDetail, getLogsBetween } from '@/lib/airtable/logs';
+import { applyTimeCalcV2FromMinutes } from '@/src/lib/timecalc';
 
 export const runtime = 'nodejs';
 
@@ -90,7 +91,7 @@ export async function GET(req: NextRequest) {
     }
 
     const logs = await getLogsBetween(range);
-    const { sessions } = buildDayDetail(logs);
+    const { sessions, totalMinutes } = buildDayDetail(logs);
 
     const logById = new Map(logs.map((log) => [log.id, log] as const));
     const userLookupCandidates = [
@@ -148,7 +149,14 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({ date, sessions: sessionsWithLookup });
+    const { minutes: normalizedMinutes, hours: totalHours } = applyTimeCalcV2FromMinutes(totalMinutes);
+
+    return NextResponse.json({
+      date,
+      totalMinutes: normalizedMinutes,
+      totalHours,
+      sessions: sessionsWithLookup,
+    });
   } catch (error) {
     console.error('[calendar][day] failed to fetch day detail', error);
     return errorResponse('INTERNAL_ERROR', 500);

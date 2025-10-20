@@ -233,6 +233,8 @@ test('day API returns paired sessions without punches detail', async () => {
   assert.strictEqual(response.status, 200);
   const body = await response.json();
   assert.strictEqual(body.date, '2025-09-01');
+  assert.strictEqual(body.totalMinutes, 780);
+  assert.strictEqual(body.totalHours, 13);
   assert.ok(!('punches' in body));
   assert.ok(Array.isArray(body.sessions));
   assert.strictEqual(body.sessions.length, 3);

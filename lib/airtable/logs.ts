@@ -500,6 +500,36 @@ function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
   return sessions;
 }
 
+type CompletedSessionDetail = SessionDetail & {
+  endMs: number;
+  clockOutAt: string;
+  hours: number;
+  status: '正常';
+};
+
+function isCompletedSession(session: SessionDetail): session is CompletedSessionDetail {
+  return (
+    session.status === '正常' &&
+    typeof session.endMs === 'number' &&
+    typeof session.hours === 'number' &&
+    typeof session.clockOutAt === 'string'
+  );
+}
+
+function calculateCompletedMinutes(sessions: SessionDetail[]): number {
+  return sessions.reduce((total, session) => {
+    if (!isCompletedSession(session)) {
+      return total;
+    }
+    const diffMs = session.endMs - session.startMs;
+    if (!Number.isFinite(diffMs) || diffMs <= 0) {
+      return total;
+    }
+    const durationMinutes = Math.round(diffMs / 60000);
+    return total + durationMinutes;
+  }, 0);
+}
+
 export function summariseMonth(logs: NormalizedLog[]): CalendarDaySummary[] {
   const grouped = new Map<string, NormalizedLog[]>();
   for (const log of logs) {
@@ -512,15 +542,8 @@ export function summariseMonth(logs: NormalizedLog[]): CalendarDaySummary[] {
   const summaries: CalendarDaySummary[] = [];
   for (const [date, items] of grouped) {
     const sessions = buildSessionDetails(items);
+    const totalMinutes = calculateCompletedMinutes(sessions);
     const completedSessions = sessions.filter(isCompletedSession);
-    const totalMinutes = completedSessions.reduce((total, session) => {
-      const diffMs = session.endMs - session.startMs;
-      if (!Number.isFinite(diffMs) || diffMs <= 0) {
-        return total;
-      }
-      const durationMinutes = Math.round(diffMs / 60000);
-      return total + durationMinutes;
-    }, 0);
     const { hours } = applyTimeCalcV2FromMinutes(totalMinutes);
     const sites = Array.from(
       new Set(items.map((item) => item.siteName).filter((name): name is string => Boolean(name))),
@@ -537,25 +560,10 @@ export function summariseMonth(logs: NormalizedLog[]): CalendarDaySummary[] {
   return summaries.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
-export function buildDayDetail(logs: NormalizedLog[]): { sessions: SessionDetail[] } {
+export function buildDayDetail(logs: NormalizedLog[]): { sessions: SessionDetail[]; totalMinutes: number } {
   const sessions = buildSessionDetails(logs);
-  return { sessions };
-}
-
-type CompletedSessionDetail = SessionDetail & {
-  endMs: number;
-  clockOutAt: string;
-  hours: number;
-  status: '正常';
-};
-
-function isCompletedSession(session: SessionDetail): session is CompletedSessionDetail {
-  return (
-    session.status === '正常' &&
-    typeof session.endMs === 'number' &&
-    typeof session.hours === 'number' &&
-    typeof session.clockOutAt === 'string'
-  );
+  const totalMinutes = calculateCompletedMinutes(sessions);
+  return { sessions, totalMinutes };
 }
 
 export type SessionReportRow = {
