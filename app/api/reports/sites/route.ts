@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth';
 import { logsTable, sitesTable, usersTable } from '@/lib/airtable';
 import { resolveUserIdentity, resolveUserKey } from '@/lib/services/userIdentity';
 import type { LogFields, SiteFields } from '@/types';
+import { applyTimeCalcV2FromMinutes } from '@/src/lib/timecalc';
 
 const DOW = ['日', '月', '火', '水', '木', '金', '土'] as const;
 
@@ -174,7 +175,7 @@ export async function GET(req: NextRequest) {
       return ta - tb;
     });
     let lastIn: number | null = null;
-    let total = 0;
+    let totalMinutes = 0;
     for (const record of records) {
       const type = record.fields.type;
       const timestampMs = parseTimestampMs(record.fields.timestamp);
@@ -184,14 +185,15 @@ export async function GET(req: NextRequest) {
       if (type === 'IN') {
         lastIn = timestampMs;
       } else if (type === 'OUT' && lastIn !== null) {
-        const diffHours = (timestampMs - lastIn) / 3_600_000;
-        if (diffHours > 0 && diffHours < 24) {
-          total += diffHours;
+        const diffMs = timestampMs - lastIn;
+        if (diffMs > 0 && diffMs < 86_400_000) {
+          totalMinutes += Math.round(diffMs / 60000);
         }
         lastIn = null;
       }
     }
-    hoursByKey.set(groupKey, Number(total.toFixed(2)));
+    const { hours } = applyTimeCalcV2FromMinutes(totalMinutes);
+    hoursByKey.set(groupKey, hours);
   }
 
   const days: DayRow[] = [];

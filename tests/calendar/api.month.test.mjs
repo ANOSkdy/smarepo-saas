@@ -189,6 +189,6 @@ test('month API aggregates punches and sessions', async () => {
   assert.ok(firstDay);
   assert.strictEqual(firstDay.punches, 2);
   assert.strictEqual(firstDay.sessions, 1);
-  assert.strictEqual(firstDay.hours, 8.5);
+  assert.strictEqual(firstDay.hours, 7);
   assert.deepStrictEqual(firstDay.sites, ['札幌第一']);
 });

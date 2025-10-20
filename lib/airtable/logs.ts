@@ -1,6 +1,7 @@
 import { Record as AirtableRecord } from 'airtable';
 import { logsTable } from '@/lib/airtable';
 import type { LogFields } from '@/types';
+import { applyTimeCalcV2FromMinutes } from '@/src/lib/timecalc';
 import { getUsersMap } from './users';
 import { AIRTABLE_PAGE_SIZE, JST_OFFSET, LOG_FIELDS } from './schema';
 
@@ -511,8 +512,16 @@ export function summariseMonth(logs: NormalizedLog[]): CalendarDaySummary[] {
   const summaries: CalendarDaySummary[] = [];
   for (const [date, items] of grouped) {
     const sessions = buildSessionDetails(items);
-    const completedSessions = sessions.filter((session) => session.status === '正常');
-    const hours = completedSessions.reduce((total, session) => total + (session.hours ?? 0), 0);
+    const completedSessions = sessions.filter(isCompletedSession);
+    const totalMinutes = completedSessions.reduce((total, session) => {
+      const diffMs = session.endMs - session.startMs;
+      if (!Number.isFinite(diffMs) || diffMs <= 0) {
+        return total;
+      }
+      const durationMinutes = Math.round(diffMs / 60000);
+      return total + durationMinutes;
+    }, 0);
+    const { hours } = applyTimeCalcV2FromMinutes(totalMinutes);
     const sites = Array.from(
       new Set(items.map((item) => item.siteName).filter((name): name is string => Boolean(name))),
     );
@@ -521,7 +530,7 @@ export function summariseMonth(logs: NormalizedLog[]): CalendarDaySummary[] {
       sites,
       punches: items.length,
       sessions: completedSessions.length,
-      hours: roundHours(hours),
+      hours,
     });
   }
 
