@@ -1,6 +1,7 @@
 import { Record as AirtableRecord } from 'airtable';
 import { logsTable } from '@/lib/airtable';
 import type { LogFields } from '@/types';
+import { applyTimeCalcV2FromMinutes } from '@/src/lib/timecalc';
 import { getUsersMap } from './users';
 import { AIRTABLE_PAGE_SIZE, JST_OFFSET, LOG_FIELDS } from './schema';
 
@@ -324,10 +325,6 @@ function formatJstTime(timestampMs: number) {
   return `${pad(hour)}:${pad(minute)}`;
 }
 
-function roundHours(value: number) {
-  return Math.round(value * 100) / 100;
-}
-
 function formatJstIso(timestampMs: number) {
   const { year, month, day, hour, minute, second } = toJstParts(timestampMs);
   return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:${pad(second)}+09:00`;
@@ -467,7 +464,8 @@ function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
       continue;
     }
 
-    const durationHours = (log.timestampMs - currentOpen.timestampMs) / (1000 * 60 * 60);
+    const durationMinutes = Math.max(0, Math.round((log.timestampMs - currentOpen.timestampMs) / 60000));
+    const { hours } = applyTimeCalcV2FromMinutes(durationMinutes, { breakMinutes: 0 });
     const workDescription = pickSessionWorkDescription(sorted, userKey, currentOpen.timestampMs, log.timestampMs, log);
 
     sessions.push({
@@ -480,7 +478,7 @@ function buildSessionDetails(logs: NormalizedLog[]): SessionDetail[] {
       siteName: currentOpen.siteName ?? log.siteName ?? null,
       clockInAt: formatJstTime(currentOpen.timestampMs),
       clockOutAt: formatJstTime(log.timestampMs),
-      hours: roundHours(durationHours),
+      hours,
       status: '正常',
       machineId: currentOpen.machineId ?? log.machineId ?? null,
       machineName: currentOpen.machineName ?? log.machineName ?? null,
@@ -511,8 +509,12 @@ export function summariseMonth(logs: NormalizedLog[]): CalendarDaySummary[] {
   const summaries: CalendarDaySummary[] = [];
   for (const [date, items] of grouped) {
     const sessions = buildSessionDetails(items);
-    const completedSessions = sessions.filter((session) => session.status === '正常');
-    const hours = completedSessions.reduce((total, session) => total + (session.hours ?? 0), 0);
+    const completedSessions = sessions.filter(isCompletedSession);
+    const totalMinutes = completedSessions.reduce((total, session) => {
+      const durationMinutes = Math.round((session.endMs - session.startMs) / 60000);
+      return total + Math.max(0, durationMinutes);
+    }, 0);
+    const { hours } = applyTimeCalcV2FromMinutes(totalMinutes);
     const sites = Array.from(
       new Set(items.map((item) => item.siteName).filter((name): name is string => Boolean(name))),
     );
@@ -521,7 +523,7 @@ export function summariseMonth(logs: NormalizedLog[]): CalendarDaySummary[] {
       sites,
       punches: items.length,
       sessions: completedSessions.length,
-      hours: roundHours(hours),
+      hours,
     });
   }
 
