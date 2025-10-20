@@ -7,7 +7,7 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsc app/api/stamp/validator.ts lib/airtableSchema.ts src/lib/excel/freeUserColumns.ts --module nodenext --target es2020 --moduleResolution nodenext --esModuleInterop --outDir tests/dist && cp tests/dist/app/api/stamp/validator.js tests/dist/validator.js && node --test tests/*.test.mjs",
+    "test": "tsc app/api/stamp/validator.ts lib/airtableSchema.ts src/lib/excel/freeUserColumns.ts src/lib/timecalc.ts --module nodenext --target es2020 --moduleResolution nodenext --esModuleInterop --outDir tests/dist && cp tests/dist/app/api/stamp/validator.js tests/dist/validator.js && node --test tests/*.test.mjs",
     "diag:p1": "tsx scripts/p1-diagnostics.ts"
   },
   "dependencies": {

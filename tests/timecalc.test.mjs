@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyTimeCalcV2FromMinutes, applyTimeCalcV2FromHours } from './timecalc';
+import { applyTimeCalcV2FromMinutes, applyTimeCalcV2FromHours } from './dist/src/lib/timecalc.js';
 
-// テストは TIME_CALC_VERSION=2 / 15分丸め / 90分控除 / nearest を前提
 process.env.TIME_CALC_VERSION = '2';
 process.env.TIME_CALC_ROUND_MINUTES = '15';
 process.env.TIME_CALC_BREAK_MINUTES = '90';
@@ -25,4 +24,3 @@ test('時間入力でも同等結果', () => {
   assert.equal(result.minutes, 300);
   assert.equal(result.hours, 5);
 });
-
