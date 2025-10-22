@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { getLogsBetween, summariseMonth } from '@/lib/airtable/logs';
+import { getCalendarMonthSummary } from '@/src/lib/data/sessions';
 
 export const runtime = 'nodejs';
-
-function resolveMonthRange(year: number, month: number) {
-  const startUtc = new Date(Date.UTC(year, month - 1, 1, -9, 0, 0));
-  const nextMonth = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
-  const endUtc = new Date(Date.UTC(nextMonth.year, nextMonth.month - 1, 1, -9, 0, 0));
-  return { from: startUtc, to: endUtc };
-}
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -30,10 +23,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const range = resolveMonthRange(year, month);
-    const logs = await getLogsBetween(range);
-    const days = summariseMonth(logs);
-    return NextResponse.json({ year, month, days: days ?? [] });
+    const summary = await getCalendarMonthSummary({ year, month });
+    return NextResponse.json(summary);
   } catch (error) {
     console.error('[calendar][month] error', error);
     return NextResponse.json({ year: null, month: null, days: [] });

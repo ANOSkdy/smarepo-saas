@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { buildSessionReport, getLogsBetween } from '@/lib/airtable/logs';
+import { getSessionReportRows } from '@/src/lib/data/sessions';
 
 export const runtime = 'nodejs';
 
@@ -22,11 +22,13 @@ function parseIntParam(value: string | null, name: string): number {
   return parsed;
 }
 
-function resolveMonthRange(year: number, month: number) {
-  const startUtc = new Date(Date.UTC(year, month - 1, 1, -9, 0, 0));
-  const nextMonth = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
-  const endUtc = new Date(Date.UTC(nextMonth.year, nextMonth.month - 1, 1, -9, 0, 0));
-  return { from: startUtc, to: endUtc };
+function resolveMonthBounds(year: number, month: number) {
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(Date.UTC(year, month, 0));
+  const endDate = `${lastDay.getUTCFullYear()}-${String(lastDay.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    lastDay.getUTCDate(),
+  ).padStart(2, '0')}`;
+  return { from: startDate, to: endDate };
 }
 
 function normalizeQuery(value: string | null | undefined): string | undefined {
@@ -35,16 +37,6 @@ function normalizeQuery(value: string | null | undefined): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function matchesFilter(value: string | null, query?: string): boolean {
-  if (!query) {
-    return true;
-  }
-  if (!value) {
-    return false;
-  }
-  return value.toLocaleLowerCase('ja').includes(query.toLocaleLowerCase('ja'));
 }
 
 function parseSearchParams(request: NextRequest): SearchParams {
@@ -73,20 +65,11 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   try {
-    const range = resolveMonthRange(params.year, params.month);
-    const logs = await getLogsBetween(range);
-    const rows = buildSessionReport(logs).filter((row) => {
-      if (!matchesFilter(row.siteName ?? null, params.sitename)) {
-        return false;
-      }
-      if (!matchesFilter(row.userName, params.username)) {
-        return false;
-      }
-      const machineLabel = row.machineName ?? row.machineId ?? null;
-      if (!matchesFilter(machineLabel, params.machinename)) {
-        return false;
-      }
-      return true;
+    const range = resolveMonthBounds(params.year, params.month);
+    const rows = await getSessionReportRows(range, {
+      siteQuery: params.sitename,
+      userQuery: params.username,
+      machineQuery: params.machinename,
     });
 
     const records = rows.map((row) => ({

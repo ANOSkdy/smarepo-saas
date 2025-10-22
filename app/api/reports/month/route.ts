@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer';
 import { NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { auth } from '@/lib/auth';
-import { buildSessionReport, getLogsBetween } from '@/lib/airtable/logs';
+import { getSessionReportRows } from '@/src/lib/data/sessions';
 
 export const runtime = 'nodejs';
 
@@ -29,11 +29,13 @@ function assertInt(name: string, value: string | null): number {
   return parseInt(value, 10);
 }
 
-function resolveMonthRange(year: number, month: number) {
-  const startUtc = new Date(Date.UTC(year, month - 1, 1, -9, 0, 0));
-  const nextMonth = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
-  const endUtc = new Date(Date.UTC(nextMonth.year, nextMonth.month - 1, 1, -9, 0, 0));
-  return { from: startUtc, to: endUtc };
+function resolveMonthBounds(year: number, month: number) {
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(Date.UTC(year, month, 0));
+  const endDate = `${lastDay.getUTCFullYear()}-${String(lastDay.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    lastDay.getUTCDate(),
+  ).padStart(2, '0')}`;
+  return { from: startDate, to: endDate };
 }
 
 export async function GET(req: Request) {
@@ -56,19 +58,12 @@ export async function GET(req: Request) {
 
   let rows: SessionRecord[] = [];
   try {
-    const range = resolveMonthRange(year, month);
-    const logs = await getLogsBetween(range);
-    const sessions = buildSessionReport(logs);
-    const filtered = sessions.filter((session) => {
-      if (userId && session.userId !== userId) {
-        return false;
-      }
-      if (site && session.siteName !== site) {
-        return false;
-      }
-      return true;
+    const range = resolveMonthBounds(year, month);
+    const records = await getSessionReportRows(range, {
+      userExact: userId ?? undefined,
+      siteExact: site ?? undefined,
     });
-    rows = filtered.map((session) => ({
+    rows = records.map((session) => ({
       id: session.id,
       fields: {
         year,
