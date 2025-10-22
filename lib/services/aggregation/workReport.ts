@@ -69,10 +69,22 @@ function matchesFilter(value: unknown, expected?: string | number): boolean {
   if (!expected) {
     return true;
   }
+  if (Array.isArray(value)) {
+    return value.some((item) => matchesFilter(item, expected));
+  }
+  if (value && typeof value === 'object') {
+    const maybeId = (value as { id?: unknown }).id;
+    if (maybeId !== undefined) {
+      return matchesFilter(maybeId, expected);
+    }
+  }
   if (value === null || value === undefined) {
     return false;
   }
   const normalized = String(value).trim();
+  if (!normalized) {
+    return false;
+  }
   return normalized === String(expected).trim();
 }
 
@@ -115,10 +127,25 @@ export async function getWorkReportByMonth(params: {
   const displayNameMap = new Map<string, string>();
 
   const toUserText = (raw: unknown): string => {
+    if (Array.isArray(raw)) {
+      for (const item of raw) {
+        const text = toUserText(item);
+        if (text) {
+          return text;
+        }
+      }
+      return '';
+    }
+    if (raw && typeof raw === 'object') {
+      const maybeId = (raw as { id?: unknown }).id;
+      if (maybeId) {
+        return toUserText(maybeId);
+      }
+    }
     if (typeof raw === 'string') {
       return raw.trim();
     }
-    if (typeof raw === 'number') {
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
       return String(raw);
     }
     return '';
@@ -147,7 +174,8 @@ export async function getWorkReportByMonth(params: {
     }
 
     const matched = findUserByAnyKey(usersMap, rawUser);
-    const displayName = matched?.name ?? (fallbackUser || '未登録ユーザー');
+    const fallbackDisplay = fallbackUser && !/^rec[a-z0-9]+$/i.test(fallbackUser) ? fallbackUser : '不明ユーザー';
+    const displayName = matched?.name ?? fallbackDisplay;
     if (!displayNameMap.has(resolvedUserKey)) {
       displayNameMap.set(resolvedUserKey, displayName);
     }
@@ -170,7 +198,7 @@ export async function getWorkReportByMonth(params: {
         breakdown: Object.fromEntries(value.breakdown.entries()),
       }))
       .sort((a, b) => a.day.localeCompare(b.day));
-    const userName = displayNameMap.get(user) ?? (user === 'unknown-user' ? '未登録ユーザー' : user);
+    const userName = displayNameMap.get(user) ?? (user === 'unknown-user' ? '不明ユーザー' : user);
     result.push({ userKey: user, userName, days, unmatchedCount: 0 });
   }
 

@@ -36,6 +36,32 @@ function normalizeKey(value: unknown): string | null {
   return null;
 }
 
+function collectCandidateKeys(value: unknown): string[] {
+  const keys = new Set<string>();
+  const visit = (raw: unknown) => {
+    if (Array.isArray(raw)) {
+      for (const item of raw) {
+        visit(item);
+      }
+      return;
+    }
+    if (raw && typeof raw === 'object') {
+      const maybeId = (raw as { id?: unknown }).id;
+      if (maybeId) {
+        visit(maybeId);
+      }
+    }
+    const normalized = normalizeKey(raw);
+    if (!normalized) {
+      return;
+    }
+    keys.add(normalized);
+    keys.add(normalized.toLowerCase());
+  };
+  visit(value);
+  return Array.from(keys);
+}
+
 function extractUserInfo(record: AirtableRecord<UserFields>): {
   keys: string[];
   value: UserLookupValue;
@@ -118,9 +144,12 @@ export function findUserByAnyKey(
   map: Map<string, UserLookupValue>,
   raw: unknown,
 ): UserLookupValue | undefined {
-  const normalized = normalizeKey(raw);
-  if (!normalized) {
-    return undefined;
+  const candidates = collectCandidateKeys(raw);
+  for (const key of candidates) {
+    const hit = map.get(key);
+    if (hit) {
+      return hit;
+    }
   }
-  return map.get(normalized) ?? map.get(normalized.toLowerCase());
+  return undefined;
 }

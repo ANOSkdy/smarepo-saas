@@ -44,10 +44,25 @@ function toWorkDescription(value: unknown): string {
 }
 
 function toUserText(raw: unknown): string {
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      const text = toUserText(item);
+      if (text) {
+        return text;
+      }
+    }
+    return '';
+  }
+  if (raw && typeof raw === 'object') {
+    const maybeId = (raw as { id?: unknown }).id;
+    if (maybeId) {
+      return toUserText(maybeId);
+    }
+  }
   if (typeof raw === 'string') {
     return raw.trim();
   }
-  if (typeof raw === 'number') {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
     return String(raw);
   }
   return '';
@@ -61,12 +76,7 @@ function resolveUserDisplay(session: SessionRecord, usersMap: Map<string, UserLo
     const name = matched.name || (fallback || '不明ユーザー');
     return { name, userRecId: matched.recordId };
   }
-  if (fallback) {
-    const lowerMatched = findUserByAnyKey(usersMap, fallback.toLowerCase());
-    if (lowerMatched) {
-      const name = lowerMatched.name || fallback;
-      return { name, userRecId: lowerMatched.recordId };
-    }
+  if (fallback && !/^rec[a-z0-9]+$/i.test(fallback)) {
     return { name: fallback, userRecId: undefined };
   }
   return { name: '不明ユーザー', userRecId: undefined };

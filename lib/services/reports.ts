@@ -48,6 +48,39 @@ function resolveSessionMinutes(session: SessionRecord): number | null {
   return null;
 }
 
+function collectUserValues(raw: unknown): string[] {
+  const values = new Set<string>();
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        visit(item);
+      }
+      return;
+    }
+    if (value && typeof value === 'object') {
+      const maybeId = (value as { id?: unknown }).id;
+      if (maybeId) {
+        visit(maybeId);
+      }
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed) {
+        values.add(trimmed);
+        values.add(trimmed.toLowerCase());
+      }
+      return;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      const text = String(value);
+      values.add(text);
+      values.add(text.toLowerCase());
+    }
+  };
+  visit(raw);
+  return Array.from(values);
+}
+
 export async function getReportRowsByUserName(
   userName: string,
   sort?: SortKey,
@@ -64,16 +97,24 @@ export async function getReportRowsByUserName(
   const candidateKeys = new Set<string>();
   candidateKeys.add(userRec.id);
   const push = (value: unknown) => {
-    if (typeof value !== 'string') return;
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    candidateKeys.add(trimmed);
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      candidateKeys.add(trimmed);
+      return;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      candidateKeys.add(String(value));
+    }
   };
   push(userFields?.name);
   push(userFields?.userId);
   push(userFields?.username);
 
-  const formulas = Array.from(candidateKeys).map((value) => `{user}='${escapeAirtable(value)}'`);
+  const formulas = Array.from(candidateKeys).map((value) => {
+    const escaped = escapeAirtable(value);
+    return `OR({user}='${escaped}', FIND('${escaped}', ARRAYJOIN({user})))`;
+  });
   const filterFormula = formulas.length === 0 ? undefined : formulas.length === 1 ? formulas[0] : `OR(${formulas.join(',')})`;
 
   const sessions = await listSessions({
@@ -86,12 +127,12 @@ export async function getReportRowsByUserName(
   const aggregated = new Map<string, { year: number; month: number; day: number; siteName: string; minutes: number }>();
 
   for (const session of sessions) {
-    const userValue = session.user;
-    if (userValue === null || userValue === undefined) {
+    const userValues = collectUserValues(session.user);
+    if (userValues.length === 0) {
       continue;
     }
-    const normalizedUser = String(userValue).trim();
-    if (!normalizedUser || !keyMatches.has(normalizedUser.toLowerCase())) {
+    const matched = userValues.some((value) => keyMatches.has(value.toLowerCase()));
+    if (!matched) {
       continue;
     }
     const dateParts = parseSessionDate(session);
@@ -102,7 +143,7 @@ export async function getReportRowsByUserName(
     if (minutes === null || minutes <= 0) {
       continue;
     }
-    const siteName = typeof session.siteName === 'string' ? session.siteName : '';
+    const siteName = typeof session.siteName === 'string' ? session.siteName.trim() : '';
     const groupKey = `${dateParts.key}__${siteName}`;
     const entry = aggregated.get(groupKey) ?? {
       year: dateParts.year,

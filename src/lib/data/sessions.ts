@@ -13,7 +13,7 @@ type Status = 'open' | 'close' | string;
 export type SessionRecord = {
   id: string; // airtable rec id
   sessionId?: string;
-  user?: number | string;
+  user?: number | string | string[] | { id?: string } | { id?: string }[];
   inLog?: string;
   outLog?: string;
   start?: string;
@@ -70,7 +70,10 @@ function buildFilterByFormula(q: SessionsQuery): string | undefined {
   if (q.dateFrom) conds.push(`{date}>='${esc(q.dateFrom)}'`);
   if (q.dateTo) conds.push(`{date}<='${esc(q.dateTo)}'`);
   if (q.status) conds.push(`{status}='${esc(String(q.status))}'`);
-  if (q.user !== undefined) conds.push(`{user}='${esc(String(q.user))}'`);
+  if (q.user !== undefined) {
+    const userValue = esc(String(q.user));
+    conds.push(`OR({user}='${userValue}', FIND('${userValue}', ARRAYJOIN({user})))`);
+  }
   if (q.siteName) conds.push(`{siteName}='${esc(q.siteName)}'`);
   if (q.machineId !== undefined) conds.push(`{machineId}='${esc(String(q.machineId))}'`);
   if (q.workDescription) conds.push(`{workDescription}='${esc(q.workDescription)}'`);
@@ -119,14 +122,32 @@ export async function listSessions(q: SessionsQuery = {}): Promise<SessionRecord
 }
 
 // ---------- Aggregations (minimal & UI-friendly) ----------
-const minutesToHours = (m?: number) => (typeof m === 'number' ? m / 60 : 0);
+const sessionHours = (session: SessionRecord): number => {
+  const minutes = resolveDurationMinutes(session);
+  return minutes !== null ? minutes / 60 : 0;
+};
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 function toText(value: unknown): string {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const text = toText(item);
+      if (text) {
+        return text;
+      }
+    }
+    return '';
+  }
+  if (value && typeof value === 'object') {
+    const maybeId = (value as { id?: unknown }).id;
+    if (maybeId) {
+      return toText(maybeId);
+    }
+  }
   if (typeof value === 'string') {
     return value.trim();
   }
-  if (typeof value === 'number') {
+  if (typeof value === 'number' && Number.isFinite(value)) {
     return String(value);
   }
   return '';
@@ -239,9 +260,10 @@ function resolveUserInfo(session: SessionRecord, usersMap: Map<string, UserLooku
   const raw = session.user;
   const fallback = toText(raw);
   const matched = findUserByAnyKey(usersMap, raw) ?? (fallback ? findUserByAnyKey(usersMap, fallback) : undefined);
+  const fallbackName = fallback && !/^rec[a-z0-9]+$/i.test(fallback) ? fallback : '不明ユーザー';
   return {
     recordId: matched?.recordId ?? null,
-    name: matched?.name ?? (fallback || '未登録ユーザー'),
+    name: matched?.name ?? fallbackName,
   };
 }
 
@@ -268,12 +290,12 @@ export async function getDashboardAgg(
     listSessions({ ...range, status: 'close', pageSize: 100 }),
     listSessions({ ...range, status: 'open', pageSize: 100 }),
   ]);
-  const totalHours = closed.reduce((sum, record) => sum + minutesToHours(record.durationMin), 0);
+  const totalHours = closed.reduce((sum, record) => sum + sessionHours(record), 0);
   const hoursBy = (key: keyof SessionRecord) =>
     closed.reduce<Record<string, number>>((acc, record) => {
-      const k = String((record as any)[key] ?? '');
+      const k = toText((record as any)[key]);
       if (!k) return acc;
-      acc[k] = (acc[k] ?? 0) + minutesToHours(record.durationMin);
+      acc[k] = (acc[k] ?? 0) + sessionHours(record);
       return acc;
     }, {});
   return {
@@ -314,9 +336,9 @@ export async function getReportsAgg(opts: {
   const sumBy = (key: keyof SessionRecord) => {
     const map = new Map<string, { hours: number; count: number }>();
     for (const record of rows) {
-      const groupKey = String((record as any)[key] ?? '');
+      const groupKey = toText((record as any)[key]);
       const entry = map.get(groupKey) ?? { hours: 0, count: 0 };
-      entry.hours += minutesToHours(record.durationMin);
+      entry.hours += sessionHours(record);
       entry.count += 1;
       map.set(groupKey, entry);
     }
@@ -339,23 +361,23 @@ export async function getSiteAgg(opts: { siteName: string; date?: ISODate; from?
     status: 'close',
     pageSize: 100,
   });
-  const totalHours = rows.reduce((sum, record) => sum + minutesToHours(record.durationMin), 0);
+  const totalHours = rows.reduce((sum, record) => sum + sessionHours(record), 0);
   const byUser = rows.reduce<Record<string, number>>((acc, record) => {
-    const key = String(record.user ?? '');
+    const key = toText(record.user);
     if (!key) return acc;
-    acc[key] = (acc[key] ?? 0) + minutesToHours(record.durationMin);
+    acc[key] = (acc[key] ?? 0) + sessionHours(record);
     return acc;
   }, {});
   const byMachine = rows.reduce<Record<string, number>>((acc, record) => {
-    const key = String(record.machineId ?? '');
+    const key = toText(record.machineId ?? record.machine);
     if (!key) return acc;
-    acc[key] = (acc[key] ?? 0) + minutesToHours(record.durationMin);
+    acc[key] = (acc[key] ?? 0) + sessionHours(record);
     return acc;
   }, {});
   const byWork = rows.reduce<Record<string, number>>((acc, record) => {
-    const key = String(record.workDescription ?? '');
+    const key = toText(record.workDescription);
     if (!key) return acc;
-    acc[key] = (acc[key] ?? 0) + minutesToHours(record.durationMin);
+    acc[key] = (acc[key] ?? 0) + sessionHours(record);
     return acc;
   }, {});
   return { totalHours, byUser, byMachine, byWork, rows };
