@@ -1,3 +1,6 @@
+import { usersTable, withRetry } from '@/lib/airtable';
+import type { UserFields } from '@/types';
+
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 
@@ -21,6 +24,31 @@ type RawAirtableRecord = {
   createdTime: string;
   fields: SessionFields;
 };
+
+function normalizeFieldKey(key: string): string {
+  return key.trim().toLowerCase();
+}
+
+function getFieldValue<T = unknown>(fields: SessionFields, fieldName: string): T | undefined {
+  const target = normalizeFieldKey(fieldName);
+  for (const [key, value] of Object.entries(fields)) {
+    if (normalizeFieldKey(key) === target) {
+      return value as T;
+    }
+  }
+  return undefined;
+}
+
+function pickFirstString(fields: SessionFields, fieldNames: string[]): string | null {
+  for (const fieldName of fieldNames) {
+    const value = getFieldValue(fields, fieldName);
+    const str = asString(value);
+    if (str) {
+      return str;
+    }
+  }
+  return null;
+}
 
 type AirtableListResponse = {
   records: RawAirtableRecord[];
@@ -176,35 +204,86 @@ function firstId(value: unknown): string | null {
   return null;
 }
 
+function extractUserName(fields: SessionFields): string | null {
+  const direct = pickFirstString(fields, [
+    'name (from user)',
+    'user name',
+    'userName',
+    'username',
+    'ユーザー名',
+    'ユーザー名 (from user)',
+    'display name',
+    'displayName',
+  ]);
+  if (direct) {
+    return direct;
+  }
+
+  for (const [key, value] of Object.entries(fields)) {
+    if (typeof value !== 'string') {
+      continue;
+    }
+    const normalizedKey = normalizeFieldKey(key);
+    if (normalizedKey.includes('user') && normalizedKey.includes('name')) {
+      const candidate = asString(value);
+      if (candidate) {
+        return candidate;
+      }
+    }
+    if (normalizedKey.includes('user') && normalizedKey.includes('display')) {
+      const candidate = asString(value);
+      if (candidate) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
 function toSessionRow(record: RawAirtableRecord): SessionReportRow | null {
   const fields = record.fields ?? {};
-  const date = asString(fields.date);
+  const date = asString(getFieldValue(fields, 'date'));
   const { year, month, day } = parseDateParts(date);
-  const start = asString(fields.start) ?? asString(fields['start (JST)']);
-  const end = asString(fields.end) ?? asString(fields['end (JST)']);
-  const durationMin = asNumber(fields.durationMin);
+  const start = pickFirstString(fields, ['start', 'start (JST)']);
+  const end = pickFirstString(fields, ['end', 'end (JST)']);
+  const durationMin = asNumber(getFieldValue(fields, 'durationMin'));
   const hours = durationMin != null ? Math.round((durationMin / 60) * 10) / 10 : null;
-  const siteName = asString(fields.siteName) ?? asString(fields['site name']);
-  const siteRecordId = firstId(fields.site);
+  const siteName = pickFirstString(fields, ['siteName', 'site name', 'site Name']);
+  const siteRecordId = firstId(getFieldValue(fields, 'site'));
   const clientName =
-    asString(fields.clientName) ?? asString(fields.client) ?? asString(fields['client (from site)']);
-  const workDescription = asString(fields.workDescription) ?? asString(fields['work description']);
+    pickFirstString(fields, ['clientName', 'client', 'client (from site)']) ??
+    pickFirstString(fields, ['client name', 'clientName (from site)']);
+  const workDescription = pickFirstString(fields, [
+    'workDescription',
+    'work description',
+    'workDescription (from work)',
+    'description (from work)',
+  ]);
 
-  const rawUserId = asNumber(fields.userId) ?? asNumber(fields['userId (from user)']);
-  const userRecordId = firstId(fields.user);
-  const userName = asString(fields['name (from user)']) ?? asString(fields.userName) ?? asString(fields.username);
+  const rawUserId =
+    asNumber(getFieldValue(fields, 'userId')) ?? asNumber(getFieldValue(fields, 'userId (from user)'));
+  const userRecordId = firstId(getFieldValue(fields, 'user'));
+  const userName = extractUserName(fields);
 
-  const machineRecordId = firstId(fields.machine);
-  const machineIdValue =
-    asString(fields.machineId) ?? asString(fields['machineId (from machine)']) ?? asString(fields.machineid);
-  const machineId = machineIdValue ?? (asNumber(fields.machineId) ?? asNumber(fields['machineId (from machine)']))?.toString() ?? null;
-  const machineName =
-    asString(fields.machineName) ??
-    asString(fields['machineName (from machine)']) ??
-    asString(fields.machinename);
+  const machineRecordId = firstId(getFieldValue(fields, 'machine'));
+  const machineIdValue = pickFirstString(fields, [
+    'machineId',
+    'machineId (from machine)',
+    'machine id',
+    'machineid',
+  ]);
+  const machineIdNumber =
+    asNumber(getFieldValue(fields, 'machineId')) ?? asNumber(getFieldValue(fields, 'machineId (from machine)'));
+  const machineId = machineIdValue ?? (machineIdNumber != null ? String(machineIdNumber) : null);
+  const machineName = pickFirstString(fields, [
+    'machineName',
+    'machineName (from machine)',
+    'machine name',
+    'machinename',
+  ]);
 
-  const status = asString(fields.status);
-  const autoGenerated = asBoolean(fields.autoGenerated);
+  const status = pickFirstString(fields, ['status']);
+  const autoGenerated = asBoolean(getFieldValue(fields, 'autoGenerated'));
 
   const startMs = start ? Date.parse(start) : Number.NaN;
   const endMs = end ? Date.parse(end) : Number.NaN;
@@ -344,11 +423,107 @@ function sortSessions(rows: SessionReportRow[]): SessionReportRow[] {
   });
 }
 
+function chunkArray<T>(values: readonly T[], size: number): T[][] {
+  if (size <= 0) {
+    return [Array.from(values)];
+  }
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function buildRecordIdFormula(ids: readonly string[]): string {
+  if (ids.length === 1) {
+    return `RECORD_ID()='${ids[0].replace(/'/g, "\\'")}'`;
+  }
+  const parts = ids.map((id) => `RECORD_ID()='${id.replace(/'/g, "\\'")}'`);
+  return `OR(${parts.join(',')})`;
+}
+
+type UserHydration = {
+  name: string | null;
+  userId: number | null;
+};
+
+async function fetchUserHydrationMap(recordIds: string[]): Promise<Map<string, UserHydration>> {
+  const map = new Map<string, UserHydration>();
+  if (recordIds.length === 0) {
+    return map;
+  }
+
+  const uniqueIds = Array.from(new Set(recordIds));
+  const batches = chunkArray(uniqueIds, 15);
+
+  for (const batch of batches) {
+    const formula = buildRecordIdFormula(batch);
+    const records = await withRetry(() =>
+      usersTable
+        .select({
+          filterByFormula: formula,
+          fields: ['name', 'username', 'userId'],
+        })
+        .all(),
+    );
+
+    const typedRecords = records as Array<{ id: string; fields: Partial<UserFields> }>;
+
+    for (const record of typedRecords) {
+      const name = asString(record.fields?.name) ?? asString(record.fields?.username) ?? null;
+      const userId = asNumber(record.fields?.userId);
+      map.set(record.id, { name, userId });
+    }
+  }
+
+  return map;
+}
+
+async function hydrateUserNames(rows: SessionReportRow[]): Promise<void> {
+  const needsHydration = rows.filter((row) => {
+    if (!row.userRecordId) {
+      return false;
+    }
+    const missingName = !row.userName || row.userName.trim().length === 0;
+    const missingUserId = row.userId == null || !Number.isFinite(row.userId);
+    return missingName || missingUserId;
+  });
+
+  if (needsHydration.length === 0) {
+    return;
+  }
+
+  const recordIds = needsHydration
+    .map((row) => row.userRecordId)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+
+  const hydrationMap = await fetchUserHydrationMap(recordIds);
+
+  for (const row of needsHydration) {
+    if (!row.userRecordId) {
+      continue;
+    }
+    const hydration = hydrationMap.get(row.userRecordId);
+    if (!hydration) {
+      continue;
+    }
+    if ((!row.userName || row.userName.trim().length === 0) && hydration.name) {
+      row.userName = hydration.name;
+    }
+    if ((row.userId == null || !Number.isFinite(row.userId)) && hydration.userId != null) {
+      row.userId = hydration.userId;
+    }
+  }
+}
+
 export async function fetchSessionReportRows(query?: SessionReportQuery): Promise<SessionReportRow[]> {
   const records = await fetchAllSessionRecords();
   const rows = records
     .map(toSessionRow)
-    .filter((row): row is SessionReportRow => row !== null && row.date !== null)
-    .filter((row) => matchesQuery(row, query));
-  return sortSessions(rows);
+    .filter((row): row is SessionReportRow => row !== null && row.date !== null);
+
+  await hydrateUserNames(rows);
+
+  const filtered = rows.filter((row) => matchesQuery(row, query));
+  return sortSessions(filtered);
 }
