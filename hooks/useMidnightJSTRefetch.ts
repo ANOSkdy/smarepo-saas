@@ -8,7 +8,8 @@ import { useEffect, useRef } from 'react';
  * refetch が未指定の場合は location.reload() をフォールバック。
  */
 export function useMidnightJSTRefetch(refetch?: () => void) {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  type TimeoutHandle = ReturnType<typeof window.setTimeout>;
+  const timerRef = useRef<TimeoutHandle | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
