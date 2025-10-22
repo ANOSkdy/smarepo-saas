@@ -2,8 +2,8 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { sitesTable, usersTable } from '@/lib/airtable';
-import { escapeAirtable } from '@/lib/airtable/schema';
+import { sitesTable } from '@/lib/airtable';
+import { findUserByAnyKey, getUsersMap, type UserLookupValue } from '@/lib/airtable/users';
 import { listSessions, type SessionRecord } from '@/src/lib/data/sessions';
 import { applyTimeCalcV2FromMinutes } from '@/src/lib/timecalc';
 import type { SiteFields } from '@/types';
@@ -43,19 +43,31 @@ function toWorkDescription(value: unknown): string {
   return '（未設定）';
 }
 
-function resolveUserDisplay(session: SessionRecord, usersById: Map<string, string>) {
-  const raw = session.user;
+function toUserText(raw: unknown): string {
   if (typeof raw === 'string') {
-    const trimmed = raw.trim();
-    if (trimmed) {
-      const name = usersById.get(trimmed) ?? trimmed;
-      return { name, userRecId: usersById.has(trimmed) ? trimmed : undefined };
-    }
+    return raw.trim();
   }
   if (typeof raw === 'number') {
-    const key = String(raw);
-    const name = usersById.get(key) ?? key;
-    return { name, userRecId: usersById.has(key) ? key : undefined };
+    return String(raw);
+  }
+  return '';
+}
+
+function resolveUserDisplay(session: SessionRecord, usersMap: Map<string, UserLookupValue>) {
+  const raw = session.user;
+  const fallback = toUserText(raw);
+  const matched = findUserByAnyKey(usersMap, raw);
+  if (matched) {
+    const name = matched.name || (fallback || '不明ユーザー');
+    return { name, userRecId: matched.recordId };
+  }
+  if (fallback) {
+    const lowerMatched = findUserByAnyKey(usersMap, fallback.toLowerCase());
+    if (lowerMatched) {
+      const name = lowerMatched.name || fallback;
+      return { name, userRecId: lowerMatched.recordId };
+    }
+    return { name: fallback, userRecId: undefined };
   }
   return { name: '不明ユーザー', userRecId: undefined };
 }
@@ -137,30 +149,10 @@ export async function GET(req: NextRequest) {
     return true;
   });
 
-  const userIds = new Set<string>();
-  for (const sessionRecord of filteredSessions) {
-    if (typeof sessionRecord.user === 'string') {
-      const trimmed = sessionRecord.user.trim();
-      if (trimmed) {
-        userIds.add(trimmed);
-      }
-    }
-  }
-
-  let usersById = new Map<string, string>();
-  if (userIds.size > 0) {
-    const conditions = Array.from(userIds)
-      .map((id) => `RECORD_ID() = '${escapeAirtable(id)}'`)
-      .join(',');
+  let usersMap = new Map<string, UserLookupValue>();
+  if (filteredSessions.length > 0) {
     try {
-      const records = await usersTable
-        .select({
-          filterByFormula: `OR(${conditions})`,
-          fields: ['name'],
-          pageSize: 100,
-        })
-        .all();
-      usersById = new Map(records.map((record) => [record.id, record.fields.name ?? '']));
+      usersMap = await getUsersMap();
     } catch (error) {
       console.warn('[reports][sites] failed to resolve users', error);
     }
@@ -178,7 +170,7 @@ export async function GET(req: NextRequest) {
     if (minutes === null || minutes <= 0) {
       continue;
     }
-    const { name, userRecId } = resolveUserDisplay(sessionRecord, usersById);
+    const { name, userRecId } = resolveUserDisplay(sessionRecord, usersMap);
     const workDescription = toWorkDescription(sessionRecord.workDescription);
     const columnKey = `${name}__${workDescription}`;
     if (!columnMap.has(columnKey)) {

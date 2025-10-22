@@ -1,4 +1,5 @@
 import { listSessions, type SessionRecord } from '@/src/lib/data/sessions';
+import { findUserByAnyKey, getUsersMap, type UserLookupValue } from '@/lib/airtable/users';
 import { normalizeDailyMinutes } from '@/src/lib/timecalc';
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -12,6 +13,7 @@ type UserBuckets = Map<string, SessionBucket>;
 
 type ReportEntry = {
   userKey: string;
+  userName: string;
   days: { day: string; totalMins: number; breakdown: Record<string, number> }[];
   unmatchedCount: number;
 };
@@ -100,7 +102,27 @@ export async function getWorkReportByMonth(params: {
 
   const sessions = await listSessions({ dateFrom, dateTo: endDate, status: 'close' });
 
+  let usersMap = new Map<string, UserLookupValue>();
+  if (sessions.length > 0) {
+    try {
+      usersMap = await getUsersMap();
+    } catch (error) {
+      console.warn('[work-report] failed to load users map', error);
+    }
+  }
+
   const userBuckets = new Map<string, UserBuckets>();
+  const displayNameMap = new Map<string, string>();
+
+  const toUserText = (raw: unknown): string => {
+    if (typeof raw === 'string') {
+      return raw.trim();
+    }
+    if (typeof raw === 'number') {
+      return String(raw);
+    }
+    return '';
+  };
 
   for (const session of sessions) {
     const date = parseSessionDate(session);
@@ -118,9 +140,16 @@ export async function getWorkReportByMonth(params: {
       continue;
     }
     const rawUser = session.user;
-    const resolvedUserKey = rawUser !== null && rawUser !== undefined && rawUser !== '' ? String(rawUser) : 'unknown-user';
+    const fallbackUser = toUserText(rawUser);
+    const resolvedUserKey = fallbackUser || 'unknown-user';
     if (userKey && resolvedUserKey !== userKey) {
       continue;
+    }
+
+    const matched = findUserByAnyKey(usersMap, rawUser);
+    const displayName = matched?.name ?? (fallbackUser || '未登録ユーザー');
+    if (!displayNameMap.has(resolvedUserKey)) {
+      displayNameMap.set(resolvedUserKey, displayName);
     }
 
     const buckets = userBuckets.get(resolvedUserKey) ?? new Map<string, SessionBucket>();
@@ -141,10 +170,17 @@ export async function getWorkReportByMonth(params: {
         breakdown: Object.fromEntries(value.breakdown.entries()),
       }))
       .sort((a, b) => a.day.localeCompare(b.day));
-    result.push({ userKey: user, days, unmatchedCount: 0 });
+    const userName = displayNameMap.get(user) ?? (user === 'unknown-user' ? '未登録ユーザー' : user);
+    result.push({ userKey: user, userName, days, unmatchedCount: 0 });
   }
 
-  result.sort((a, b) => a.userKey.localeCompare(b.userKey, 'ja'));
+  result.sort((a, b) => {
+    const nameCompare = a.userName.localeCompare(b.userName, 'ja');
+    if (nameCompare !== 0) {
+      return nameCompare;
+    }
+    return a.userKey.localeCompare(b.userKey, 'ja');
+  });
 
   const warnings: ReportWarning[] = [];
 

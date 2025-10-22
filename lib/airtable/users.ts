@@ -3,6 +3,7 @@ import { usersTable } from '@/lib/airtable';
 import type { UserFields } from '@/types';
 
 export type UserLookupValue = {
+  recordId: string;
   name: string;
   email?: string | null;
   userId?: string | null;
@@ -24,6 +25,17 @@ async function withRetry<T>(factory: () => Promise<T>, attempt = 0): Promise<T> 
   }
 }
 
+function normalizeKey(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof value === 'number') {
+    return String(value);
+  }
+  return null;
+}
+
 function extractUserInfo(record: AirtableRecord<UserFields>): {
   keys: string[];
   value: UserLookupValue;
@@ -37,24 +49,39 @@ function extractUserInfo(record: AirtableRecord<UserFields>): {
   const nameField = typeof fields.name === 'string' ? fields.name : null;
   const displayName = nameField || username || '未登録ユーザー';
 
-  const keys = [recordId];
+  const keys = new Set<string>();
+  keys.add(recordId);
   if (userId) {
-    keys.push(userId);
+    const normalized = normalizeKey(userId);
+    if (normalized) {
+      keys.add(normalized);
+      const lower = normalized.toLowerCase();
+      keys.add(lower);
+    }
   }
   if (username) {
-    keys.push(username);
+    const normalized = normalizeKey(username);
+    if (normalized) {
+      keys.add(normalized);
+      const lower = normalized.toLowerCase();
+      keys.add(lower);
+    }
   }
-  if (displayName) {
-    keys.push(displayName);
-    keys.push(displayName.toLowerCase());
+  const displayNormalized = normalizeKey(displayName);
+  if (displayNormalized) {
+    keys.add(displayNormalized);
+    keys.add(displayNormalized.toLowerCase());
   }
   if (email) {
-    keys.push(email.toLowerCase());
+    const normalized = normalizeKey(email);
+    if (normalized) {
+      keys.add(normalized.toLowerCase());
+    }
   }
 
   return {
-    keys,
-    value: { name: displayName, email, userId },
+    keys: Array.from(keys),
+    value: { recordId, name: displayName, email, userId },
   };
 }
 
@@ -72,12 +99,28 @@ export async function getUsersMap(): Promise<Map<string, UserLookupValue>> {
   for (const record of records) {
     const { keys, value } = extractUserInfo(record);
     for (const key of keys) {
-      if (!key) continue;
-      if (!map.has(key)) {
-        map.set(String(key), value);
+      const normalized = normalizeKey(key);
+      if (!normalized) continue;
+      if (!map.has(normalized)) {
+        map.set(normalized, value);
+      }
+      const lower = normalized.toLowerCase();
+      if (!map.has(lower)) {
+        map.set(lower, value);
       }
     }
   }
 
   return map;
+}
+
+export function findUserByAnyKey(
+  map: Map<string, UserLookupValue>,
+  raw: unknown,
+): UserLookupValue | undefined {
+  const normalized = normalizeKey(raw);
+  if (!normalized) {
+    return undefined;
+  }
+  return map.get(normalized) ?? map.get(normalized.toLowerCase());
 }
