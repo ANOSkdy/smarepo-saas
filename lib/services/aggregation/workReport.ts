@@ -117,8 +117,8 @@ export async function getWorkReportByMonth(params: {
     if (!matchesFilter(session.machineId ?? session.machine, machineId)) {
       continue;
     }
-    const candidateUserKey = session.user ?? session.user?.toString();
-    const resolvedUserKey = candidateUserKey !== null && candidateUserKey !== undefined ? String(candidateUserKey) : 'unknown-user';
+    const rawUser = session.user;
+    const resolvedUserKey = rawUser !== null && rawUser !== undefined && rawUser !== '' ? String(rawUser) : 'unknown-user';
     if (userKey && resolvedUserKey !== userKey) {
       continue;
     }
