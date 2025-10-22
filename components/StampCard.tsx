@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { SiteFields, WorkTypeFields } from '@/types';
 import { Record } from 'airtable';
 import LogoutButton from './LogoutButton';
@@ -12,6 +12,7 @@ import {
   describeLocationError,
   normalizeToLocationError,
 } from '@/lib/location-error';
+import { useMidnightJSTRefetch } from '@/hooks/useMidnightJSTRefetch';
 
 type StampCardProps = {
   initialStampType: 'IN' | 'OUT';
@@ -255,6 +256,14 @@ export default function StampCard({
   userName,
   machineName,
 }: StampCardProps) {
+  const router = useRouter();
+  useMidnightJSTRefetch(() => {
+    try {
+      router.refresh();
+    } catch (error) {
+      console.warn('[StampCard] router.refresh failed', error);
+    }
+  });
   const [stampType, setStampType] = useState<'IN' | 'OUT' | 'COMPLETED'>(initialStampType);
   const [workTypes, setWorkTypes] = useState<Record<WorkTypeFields>[]>([]);
   const [sites, setSites] = useState<Record<SiteFields>[]>([]);
