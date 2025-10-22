@@ -44,6 +44,10 @@ function extractUserInfo(record: AirtableRecord<UserFields>): {
   if (username) {
     keys.push(username);
   }
+  if (displayName) {
+    keys.push(displayName);
+    keys.push(displayName.toLowerCase());
+  }
   if (email) {
     keys.push(email.toLowerCase());
   }

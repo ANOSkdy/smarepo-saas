@@ -2,10 +2,11 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { logsTable, sitesTable, usersTable } from '@/lib/airtable';
-import { resolveUserIdentity, resolveUserKey } from '@/lib/services/userIdentity';
+import { sitesTable, usersTable } from '@/lib/airtable';
+import { escapeAirtable } from '@/lib/airtable/schema';
+import { listSessions, type SessionRecord } from '@/src/lib/data/sessions';
 import { applyTimeCalcV2FromMinutes } from '@/src/lib/timecalc';
-import type { LogFields, SiteFields } from '@/types';
+import type { SiteFields } from '@/types';
 
 const DOW = ['日', '月', '火', '水', '木', '金', '土'] as const;
 
@@ -15,12 +16,48 @@ function formatYmd(year: number, month: number, day: number) {
   return `${year}-${mm}-${dd}`;
 }
 
-function parseTimestampMs(value: unknown) {
-  if (typeof value !== 'string') {
-    return Number.NaN;
+function parseSessionMinutes(session: SessionRecord): number | null {
+  if (typeof session.durationMin === 'number' && Number.isFinite(session.durationMin)) {
+    return Math.max(0, session.durationMin);
   }
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? Number.NaN : ms;
+  if (session.durationMin !== undefined) {
+    const parsed = Number(session.durationMin);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, parsed);
+    }
+  }
+  if (typeof session.start === 'string' && typeof session.end === 'string') {
+    const startMs = Date.parse(session.start);
+    const endMs = Date.parse(session.end);
+    if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
+      return Math.max(0, Math.round((endMs - startMs) / 60000));
+    }
+  }
+  return null;
+}
+
+function toWorkDescription(value: unknown): string {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value.trim();
+  }
+  return '（未設定）';
+}
+
+function resolveUserDisplay(session: SessionRecord, usersById: Map<string, string>) {
+  const raw = session.user;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed) {
+      const name = usersById.get(trimmed) ?? trimmed;
+      return { name, userRecId: usersById.has(trimmed) ? trimmed : undefined };
+    }
+  }
+  if (typeof raw === 'number') {
+    const key = String(raw);
+    const name = usersById.get(key) ?? key;
+    return { name, userRecId: usersById.has(key) ? key : undefined };
+  }
+  return { name: '不明ユーザー', userRecId: undefined };
 }
 
 export type ReportColumn = {
@@ -70,26 +107,50 @@ export async function GET(req: NextRequest) {
     console.warn('[reports][sites] failed to load site', error);
   }
 
-  const filterByFormula = `AND({date} >= "${startYmd}", {date} <= "${endYmd}")`;
-  const logRecords = await logsTable
-    .select({
-      filterByFormula,
-      pageSize: 100,
-    })
-    .all();
+  const workSet = new Set(workFilters);
+
+  let sessions: SessionRecord[] = [];
+  try {
+    sessions = await listSessions({ dateFrom: startYmd, dateTo: endYmd, status: 'close' });
+  } catch (error) {
+    console.error('[reports][sites] failed to load sessions', error);
+    return NextResponse.json({ error: 'FAILED_TO_LOAD_SESSIONS' }, { status: 500 });
+  }
+
+  const normalizedSite = siteName.trim();
+  const filteredSessions = sessions.filter((session) => {
+    const sessionSite = typeof session.siteName === 'string' ? session.siteName.trim() : '';
+    if (normalizedSite) {
+      if (!sessionSite || sessionSite !== normalizedSite) {
+        return false;
+      }
+    }
+    if (workSet.size > 0) {
+      if (typeof session.workDescription !== 'string') {
+        return false;
+      }
+      const trimmed = session.workDescription.trim();
+      if (!trimmed || !workSet.has(trimmed)) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   const userIds = new Set<string>();
-  for (const record of logRecords) {
-    const identity = resolveUserIdentity(record);
-    if (identity.userRecId) {
-      userIds.add(identity.userRecId);
+  for (const sessionRecord of filteredSessions) {
+    if (typeof sessionRecord.user === 'string') {
+      const trimmed = sessionRecord.user.trim();
+      if (trimmed) {
+        userIds.add(trimmed);
+      }
     }
   }
 
   let usersById = new Map<string, string>();
   if (userIds.size > 0) {
     const conditions = Array.from(userIds)
-      .map((id) => `RECORD_ID() = '${id}'`)
+      .map((id) => `RECORD_ID() = '${escapeAirtable(id)}'`)
       .join(',');
     try {
       const records = await usersTable
@@ -105,41 +166,27 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const workSet = new Set(workFilters);
-  const filteredLogs = logRecords.filter((record) => {
-    const fields = record.fields as LogFields & {
-      site?: readonly string[];
-      userId?: string;
-    };
-    const hitSite =
-      (Array.isArray(fields.site) && fields.site.includes(siteId)) ||
-      (!!siteName && fields.siteName === siteName);
-    if (!hitSite) {
-      return false;
-    }
-    if (workSet.size === 0) {
-      return true;
-    }
-    return fields.workDescription ? workSet.has(fields.workDescription) : false;
-  });
-
   const columnMap = new Map<string, ReportColumn>();
-  type LogRecord = (typeof filteredLogs)[number];
+  const dailyMinutes = new Map<string, Map<string, number>>();
 
-  for (const record of filteredLogs) {
-    const fields = record.fields as LogFields;
-    const identity = resolveUserIdentity(record);
-    const workDescription = fields.workDescription || '（未設定）';
-    const userName =
-      (identity.userRecId && usersById.get(identity.userRecId)) ||
-      identity.displayName ||
-      identity.username ||
-      '不明ユーザー';
-    const userKey = resolveUserKey(record);
-    const key = `${userKey}__${workDescription}`;
-    if (!columnMap.has(key)) {
-      columnMap.set(key, { key, userRecId: identity.userRecId, userName, workDescription });
+  for (const sessionRecord of filteredSessions) {
+    const date = typeof sessionRecord.date === 'string' ? sessionRecord.date : null;
+    if (!date) {
+      continue;
     }
+    const minutes = parseSessionMinutes(sessionRecord);
+    if (minutes === null || minutes <= 0) {
+      continue;
+    }
+    const { name, userRecId } = resolveUserDisplay(sessionRecord, usersById);
+    const workDescription = toWorkDescription(sessionRecord.workDescription);
+    const columnKey = `${name}__${workDescription}`;
+    if (!columnMap.has(columnKey)) {
+      columnMap.set(columnKey, { key: columnKey, userRecId, userName: name, workDescription });
+    }
+    const mapForDay = dailyMinutes.get(date) ?? new Map<string, number>();
+    mapForDay.set(columnKey, (mapForDay.get(columnKey) ?? 0) + minutes);
+    dailyMinutes.set(date, mapForDay);
   }
 
   const columns = Array.from(columnMap.values()).sort((a, b) => {
@@ -149,58 +196,18 @@ export async function GET(req: NextRequest) {
     return a.workDescription.localeCompare(b.workDescription, 'ja');
   });
 
-  const groups = new Map<string, LogRecord[]>();
-
-  for (const record of filteredLogs) {
-    const fields = record.fields as LogFields;
-    const date = fields.date;
-    if (!date) {
-      continue;
-    }
-    const workDescription = fields.workDescription || '（未設定）';
-    const userKey = resolveUserKey(record);
-    const columnKey = `${userKey}__${workDescription}`;
-    const groupKey = `${date}|${columnKey}`;
-    const queue = groups.get(groupKey) ?? [];
-    queue.push(record);
-    groups.set(groupKey, queue);
-  }
-
-  const hoursByKey = new Map<string, number>();
-
-  for (const [groupKey, records] of groups.entries()) {
-    records.sort((a, b) => {
-      const ta = parseTimestampMs(a.fields.timestamp);
-      const tb = parseTimestampMs(b.fields.timestamp);
-      return ta - tb;
-    });
-    let lastIn: number | null = null;
-    let totalMinutes = 0;
-    for (const record of records) {
-      const type = record.fields.type;
-      const timestampMs = parseTimestampMs(record.fields.timestamp);
-      if (!Number.isFinite(timestampMs)) {
-        continue;
-      }
-      if (type === 'IN') {
-        lastIn = timestampMs;
-      } else if (type === 'OUT' && lastIn !== null) {
-        const diffMinutes = Math.round((timestampMs - lastIn) / 60000);
-        if (diffMinutes > 0 && diffMinutes < 24 * 60) {
-          totalMinutes += diffMinutes;
-        }
-        lastIn = null;
-      }
-    }
-    const { hours } = applyTimeCalcV2FromMinutes(totalMinutes);
-    hoursByKey.set(groupKey, hours);
-  }
-
   const days: DayRow[] = [];
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = formatYmd(year, month, day);
     const dow = DOW[new Date(`${date}T00:00:00+09:00`).getDay()];
-    const values = columns.map((column) => hoursByKey.get(`${date}|${column.key}`) ?? 0);
+    const minutesForDay = dailyMinutes.get(date) ?? new Map();
+    const values = columns.map((column) => {
+      const minutes = minutesForDay.get(column.key) ?? 0;
+      if (minutes <= 0) {
+        return 0;
+      }
+      return applyTimeCalcV2FromMinutes(minutes).hours;
+    });
     days.push({ date, day, dow, values });
   }
 

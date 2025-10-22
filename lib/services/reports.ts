@@ -1,18 +1,52 @@
-import { logsTable, usersTable } from '@/lib/airtable';
-import {
-  LOG_FIELDS,
-  LOGS_FIELDS,
-  buildLookupEqualsIgnoreCase,
-  buildUserFilterById,
-  buildUserFilterByName,
-  escapeAirtable,
-} from '@/lib/airtable/schema';
-import { pairLogsByDay, type LogRecord, type ReportRow } from '@/lib/reports/pair';
+import { usersTable } from '@/lib/airtable';
+import { escapeAirtable } from '@/lib/airtable/schema';
+import { type ReportRow } from '@/lib/reports/pair';
+import { listSessions, type SessionRecord } from '@/src/lib/data/sessions';
 import { applyTimeCalcV2FromMinutes } from '@/src/lib/timecalc';
 
 type SortKey = 'year' | 'month' | 'day' | 'siteName';
 
-const LOG_SELECT_FIELDS = ['type', 'timestamp', 'date', 'siteName', 'clientName', 'user'] as const;
+function parseSessionDate(session: SessionRecord): { key: string; year: number; month: number; day: number } | null {
+  const rawDate = typeof session.date === 'string' && session.date.trim().length > 0
+    ? session.date.trim()
+    : typeof session.start === 'string' && session.start.length >= 10
+    ? session.start.slice(0, 10)
+    : typeof session.inLog === 'string' && session.inLog.length >= 10
+    ? session.inLog.slice(0, 10)
+    : null;
+  if (!rawDate) {
+    return null;
+  }
+  const [yearText, monthText, dayText] = rawDate.split('-');
+  const year = Number.parseInt(yearText ?? '', 10);
+  const month = Number.parseInt(monthText ?? '', 10);
+  const day = Number.parseInt(dayText ?? '', 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+  const key = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return { key, year, month, day };
+}
+
+function resolveSessionMinutes(session: SessionRecord): number | null {
+  if (typeof session.durationMin === 'number' && Number.isFinite(session.durationMin)) {
+    return Math.max(0, session.durationMin);
+  }
+  if (session.durationMin !== undefined) {
+    const parsed = Number(session.durationMin);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, parsed);
+    }
+  }
+  if (typeof session.start === 'string' && typeof session.end === 'string') {
+    const startMs = Date.parse(session.start);
+    const endMs = Date.parse(session.end);
+    if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
+      return Math.max(0, Math.round((endMs - startMs) / 60000));
+    }
+  }
+  return null;
+}
 
 export async function getReportRowsByUserName(
   userName: string,
@@ -26,74 +60,68 @@ export async function getReportRowsByUserName(
   const userRec = users?.[0];
   if (!userRec) return [];
 
-  const userFields = userRec.fields as Record<string, unknown>;
-  const filterParts = new Set<string>();
-
-  const recordId = userRec.id;
-  filterParts.add(`FIND('${escapeAirtable(recordId)}', ARRAYJOIN({${LOG_FIELDS.user}}))`);
-
-  const pushEqualityFilter = (builder: (value: string) => string, rawValue: unknown) => {
-    if (typeof rawValue !== 'string') return;
-    const trimmed = rawValue.trim();
+  const userFields = userRec.fields as Record<string, unknown> | undefined;
+  const candidateKeys = new Set<string>();
+  candidateKeys.add(userRec.id);
+  const push = (value: unknown) => {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
     if (!trimmed) return;
-    filterParts.add(builder(trimmed));
+    candidateKeys.add(trimmed);
   };
+  push(userFields?.name);
+  push(userFields?.userId);
+  push(userFields?.username);
 
-  const pushLookupFilter = (fieldName: string, rawValue: unknown) => {
-    if (typeof rawValue !== 'string') return;
-    const trimmed = rawValue.trim();
-    if (!trimmed) return;
-    filterParts.add(buildLookupEqualsIgnoreCase(fieldName, trimmed));
-  };
+  const formulas = Array.from(candidateKeys).map((value) => `{user}='${escapeAirtable(value)}'`);
+  const filterFormula = formulas.length === 0 ? undefined : formulas.length === 1 ? formulas[0] : `OR(${formulas.join(',')})`;
 
-  pushEqualityFilter(buildUserFilterByName, userFields.name as string | undefined);
-  pushEqualityFilter(buildUserFilterById, userFields.userId as string | undefined);
+  const sessions = await listSessions({
+    filterFormula,
+    status: 'close',
+    sortBy: [{ field: 'date', direction: 'asc' }],
+  });
 
-  pushLookupFilter(LOGS_FIELDS.userNameLookup, userFields.name as string | undefined);
-  pushLookupFilter(LOGS_FIELDS.userIdLookup, userFields.userId as string | undefined);
+  const keyMatches = new Set(Array.from(candidateKeys).map((value) => value.toLowerCase()));
+  const aggregated = new Map<string, { year: number; month: number; day: number; siteName: string; minutes: number }>();
 
-  const filterExpressions = Array.from(filterParts);
-  const filterByFormula =
-    filterExpressions.length === 1 ? filterExpressions[0] : `OR(${filterExpressions.join(', ')})`;
+  for (const session of sessions) {
+    const userValue = session.user;
+    if (userValue === null || userValue === undefined) {
+      continue;
+    }
+    const normalizedUser = String(userValue).trim();
+    if (!normalizedUser || !keyMatches.has(normalizedUser.toLowerCase())) {
+      continue;
+    }
+    const dateParts = parseSessionDate(session);
+    if (!dateParts) {
+      continue;
+    }
+    const minutes = resolveSessionMinutes(session);
+    if (minutes === null || minutes <= 0) {
+      continue;
+    }
+    const siteName = typeof session.siteName === 'string' ? session.siteName : '';
+    const groupKey = `${dateParts.key}__${siteName}`;
+    const entry = aggregated.get(groupKey) ?? {
+      year: dateParts.year,
+      month: dateParts.month,
+      day: dateParts.day,
+      siteName,
+      minutes: 0,
+    };
+    entry.minutes += minutes;
+    aggregated.set(groupKey, entry);
+  }
 
-  const selectFields = [...LOG_SELECT_FIELDS];
-
-  const logRecords = await logsTable
-    .select({
-      filterByFormula,
-      fields: selectFields,
-    })
-    .all()
-    .catch((error) => {
-      const statusCode =
-        typeof error === 'object' && error !== null && 'statusCode' in error
-          ? (error as { statusCode?: number }).statusCode
-          : undefined;
-
-      if (statusCode === 422) {
-        console.error('reports.filter.invalid', {
-          formula: filterByFormula,
-          fields: LOG_SELECT_FIELDS,
-          error:
-            error instanceof Error
-              ? { name: error.name, message: error.message }
-              : error,
-        });
-      }
-
-      throw error;
-    });
-
-  const paired = pairLogsByDay(
-    logRecords.map<LogRecord>((record) => ({
-      id: record.id,
-      fields: record.fields as unknown as LogRecord['fields'],
-    })),
-  );
-
-  const normalized = paired.map<ReportRow>((row) => ({
-    ...row,
-    minutes: applyTimeCalcV2FromMinutes(row.minutes).minutes,
+  const normalized = Array.from(aggregated.values()).map<ReportRow>((entry) => ({
+    year: entry.year,
+    month: entry.month,
+    day: entry.day,
+    siteName: entry.siteName,
+    clientName: undefined,
+    minutes: applyTimeCalcV2FromMinutes(entry.minutes).minutes,
   }));
 
   if (sort) {

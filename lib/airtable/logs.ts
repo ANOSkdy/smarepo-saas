@@ -1,7 +1,5 @@
-import { Record as AirtableRecord } from 'airtable';
-import { logsTable } from '@/lib/airtable';
-import type { LogFields } from '@/types';
 import { applyTimeCalcV2FromMinutes } from '@/src/lib/timecalc';
+import { listSessions, type SessionRecord } from '@/src/lib/data/sessions';
 import { getUsersMap } from './users';
 import { AIRTABLE_PAGE_SIZE, JST_OFFSET, LOG_FIELDS } from './schema';
 
@@ -52,224 +50,204 @@ export type SessionDetail = {
   workDescription: string | null;
 };
 
-const RETRY_LIMIT = 3;
-const RETRY_DELAY = 500;
-async function withRetry<T>(factory: () => Promise<T>, attempt = 0): Promise<T> {
-  try {
-    return await factory();
-  } catch (error) {
-    if (attempt >= RETRY_LIMIT) {
-      throw error;
-    }
-    const delay = RETRY_DELAY * 2 ** attempt;
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    return withRetry(factory, attempt + 1);
-  }
-}
-
-const MACHINE_ID_LOOKUP_FIELDS = [
-  LOG_FIELDS.machineId,
-  LOG_FIELDS.machineid,
-  LOG_FIELDS.machineIdFromMachine,
-  LOG_FIELDS.machineidFromMachine,
-] as const;
-
-const MACHINE_NAME_LOOKUP_FIELDS = [
-  LOG_FIELDS.machineName,
-  LOG_FIELDS.machinename,
-  LOG_FIELDS.machineNameFromMachine,
-  LOG_FIELDS.machinenameFromMachine,
-] as const;
-
-const USER_NAME_LOOKUP_FIELDS = [
-  LOG_FIELDS.userName,
-  LOG_FIELDS.username,
-  LOG_FIELDS.userNameFromUser,
-  LOG_FIELDS.nameFromUser,
-] as const;
-
-function normalizeLookupText(raw: unknown): string | null {
-  if (raw === null || raw === undefined) {
+function parseSessionTimestamp(value: unknown): { iso: string; ms: number } | null {
+  if (typeof value !== 'string') {
     return null;
   }
-  if (Array.isArray(raw)) {
-    for (const entry of raw) {
-      const normalized = normalizeLookupText(entry);
-      if (normalized) {
-        return normalized;
-      }
-    }
+  const trimmed = value.trim();
+  if (!trimmed) {
     return null;
   }
-  const text = String(raw).trim();
-  return text.length === 0 ? null : text;
-}
-
-function normalizeMachineIdentifier(raw: unknown): string | null {
-  const text = normalizeLookupText(raw);
-  if (!text) {
+  const ms = Date.parse(trimmed);
+  if (Number.isNaN(ms)) {
     return null;
   }
-  if (text.startsWith('[') && text.endsWith(']')) {
-    try {
-      const parsed = JSON.parse(text);
-      if (Array.isArray(parsed)) {
-        for (const item of parsed) {
-          const normalized = normalizeMachineIdentifier(item);
-          if (normalized) {
-            return normalized;
-          }
-        }
-      }
-    } catch {
-      // ignore JSON parse errors and fall back to trimmed text handling
-    }
-  }
-  const [first] = text.split(',');
-  const normalized = first.trim();
-  return normalized.length > 0 ? normalized : null;
+  return { iso: trimmed, ms };
 }
 
-function readLookupField(
-  fields: Record<string, unknown>,
-  keys: readonly string[],
-  normalizer: (value: unknown) => string | null,
-): string | null {
-  for (const key of keys) {
-    if (!Object.prototype.hasOwnProperty.call(fields, key)) {
-      continue;
-    }
-    const value = fields[key];
-    const normalized = normalizer(value);
-    if (normalized) {
-      return normalized;
-    }
+function asNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
   }
-  return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function extractWorkDescriptions(raw: unknown): string[] {
-  if (raw === null || raw === undefined) {
+function splitWorkDescriptions(source: unknown): string[] {
+  if (typeof source !== 'string') {
     return [];
   }
-  if (Array.isArray(raw)) {
-    const collected: string[] = [];
-    for (const entry of raw) {
-      collected.push(...extractWorkDescriptions(entry));
-    }
-    return collected;
-  }
-  const text = String(raw).trim();
-  return text.length === 0 ? [] : [text];
+  return source
+    .split(/[\n,;/]/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
 }
 
-function toNormalizedLog(record: AirtableRecord<LogFields>): NormalizedLog | null {
-  const fields = record.fields as Record<string, unknown>;
-  const typeRaw = fields[LOG_FIELDS.type];
-  if (typeRaw !== 'IN' && typeRaw !== 'OUT') {
-    return null;
-  }
-  const timestampRaw = fields[LOG_FIELDS.timestamp];
-  if (typeof timestampRaw !== 'string') {
-    return null;
-  }
-  const timestampMs = Date.parse(timestampRaw);
-  if (Number.isNaN(timestampMs)) {
-    return null;
-  }
-  const userLinks = Array.isArray(fields[LOG_FIELDS.user])
-    ? (fields[LOG_FIELDS.user] as readonly string[])
-    : [];
-  const userIdField = typeof fields['userId'] === 'string' ? (fields['userId'] as string) : null;
-  const siteLinks = Array.isArray(fields[LOG_FIELDS.site])
-    ? (fields[LOG_FIELDS.site] as readonly string[])
-    : [];
-  const userName = readLookupField(fields, USER_NAME_LOOKUP_FIELDS, normalizeLookupText);
-  const fallbackSiteName = fields['sitename'];
-  const siteName = typeof fields[LOG_FIELDS.siteName] === 'string'
-    ? (fields[LOG_FIELDS.siteName] as string)
-    : typeof fallbackSiteName === 'string'
-    ? (fallbackSiteName as string)
-    : null;
-  const workType = typeof fields[LOG_FIELDS.workType] === 'string'
-    ? (fields[LOG_FIELDS.workType] as string)
-    : typeof fields[LOG_FIELDS.workDescription] === 'string'
-    ? (fields[LOG_FIELDS.workDescription] as string)
-    : null;
-  const workDescriptions = Array.from(new Set(extractWorkDescriptions(fields[LOG_FIELDS.workDescription])));
-  const note = typeof fields[LOG_FIELDS.note] === 'string' ? (fields[LOG_FIELDS.note] as string) : null;
-  const usernameField = typeof fields[LOG_FIELDS.username] === 'string' ? (fields[LOG_FIELDS.username] as string) : null;
-  const userEmailField = (() => {
-    const rawEmail = fields['userEmail'] ?? fields['email'];
-    return typeof rawEmail === 'string' ? rawEmail : null;
-  })();
-  const machineId = readLookupField(fields, MACHINE_ID_LOOKUP_FIELDS, normalizeMachineIdentifier);
-  const machineNameLookup = readLookupField(fields, MACHINE_NAME_LOOKUP_FIELDS, normalizeLookupText);
-  const fallbackMachineName = normalizeLookupText(fields['machinename'] ?? fields['machineName']);
-  const machineName = machineNameLookup ?? fallbackMachineName;
+function createNormalizedLogFromSession(
+  session: SessionRecord,
+  type: LogType,
+  stamp: { iso: string; ms: number },
+  suffix: string,
+): NormalizedLog {
+  const userRaw = session.user;
+  const userId = userRaw === null || userRaw === undefined ? null : String(userRaw).trim() || null;
+  const userName = typeof session.user === 'string' && session.user.trim().length > 0 ? session.user.trim() : null;
+
+  const machineIdRaw = session.machineId ?? session.machine ?? null;
+  const machineId = machineIdRaw === null || machineIdRaw === undefined ? null : String(machineIdRaw).trim() || null;
+  const machineName =
+    typeof session.machineName === 'string' && session.machineName.trim().length > 0
+      ? session.machineName.trim()
+      : typeof session.machine === 'string' && session.machine.trim().length > 0
+      ? session.machine.trim()
+      : null;
+
+  const workDesc = typeof session.workDescription === 'string' ? session.workDescription.trim() : null;
+  const workDescriptions = workDesc ? splitWorkDescriptions(workDesc) : [];
 
   const lookupKeys = new Set<string>();
-  if (userLinks.length > 0) {
-    lookupKeys.add(String(userLinks[0]));
+  if (userId) {
+    lookupKeys.add(userId);
+    lookupKeys.add(userId.toLowerCase());
   }
-  if (userIdField) {
-    lookupKeys.add(userIdField);
+  if (userName) {
+    lookupKeys.add(userName);
+    lookupKeys.add(userName.toLowerCase());
   }
-  if (usernameField) {
-    lookupKeys.add(usernameField);
+  if (typeof session.sessionId === 'string' && session.sessionId.trim()) {
+    lookupKeys.add(session.sessionId.trim());
   }
-  if (userEmailField) {
-    lookupKeys.add(userEmailField);
-    lookupKeys.add(userEmailField.toLowerCase());
+  if (typeof session.uniqueKey === 'string' && session.uniqueKey.trim()) {
+    lookupKeys.add(session.uniqueKey.trim());
+  }
+
+  const dateValue = session.date ?? stamp.iso.slice(0, 10);
+
+  const rawFields: Record<string, unknown> = {
+    [LOG_FIELDS.timestamp]: stamp.iso,
+    [LOG_FIELDS.type]: type,
+    date: dateValue,
+    [LOG_FIELDS.siteName]: session.siteName ?? null,
+    [LOG_FIELDS.workDescription]: workDesc ?? null,
+    [LOG_FIELDS.workType]: workDesc ?? null,
+    status: session.status ?? null,
+    sessionId: session.sessionId ?? null,
+    uniqueKey: session.uniqueKey ?? null,
+    durationMin: session.durationMin ?? null,
+  };
+
+  if (userId) {
+    rawFields[LOG_FIELDS.user] = [userId];
+  }
+  if (userName) {
+    rawFields[LOG_FIELDS.userName] = userName;
+    rawFields[LOG_FIELDS.username] = userName;
+    rawFields[LOG_FIELDS.userNameFromUser] = userName;
+    rawFields[LOG_FIELDS.nameFromUser] = userName;
+  }
+  if (machineId) {
+    rawFields[LOG_FIELDS.machine] = [machineId];
+    rawFields[LOG_FIELDS.machineId] = machineId;
+    rawFields[LOG_FIELDS.machineid] = machineId;
+    rawFields[LOG_FIELDS.machineIdFromMachine] = machineId;
+    rawFields[LOG_FIELDS.machineidFromMachine] = machineId;
+  }
+  if (machineName) {
+    rawFields[LOG_FIELDS.machineName] = machineName;
+    rawFields[LOG_FIELDS.machinename] = machineName;
+    rawFields[LOG_FIELDS.machineNameFromMachine] = machineName;
+    rawFields[LOG_FIELDS.machinenameFromMachine] = machineName;
+  }
+  if (session.siteName) {
+    rawFields[LOG_FIELDS.site] = [session.siteName];
   }
 
   return {
-    id: record.id,
-    type: typeRaw,
-    timestamp: timestampRaw,
-    timestampMs,
-    userId: userLinks.length > 0 ? String(userLinks[0]) : null,
+    id: `${session.id}-${suffix}`,
+    type,
+    timestamp: stamp.iso,
+    timestampMs: stamp.ms,
+    userId,
     userName,
     userLookupKeys: Array.from(lookupKeys),
     machineId,
     machineName,
-    siteId: siteLinks.length > 0 ? String(siteLinks[0]) : null,
-    siteName,
-    workType,
+    siteId: null,
+    siteName: session.siteName ?? null,
+    workType: workDesc ?? null,
     workDescriptions,
-    note,
-    rawFields: fields,
+    note: null,
+    rawFields,
   };
+}
+
+function expandSessionRecord(session: SessionRecord): NormalizedLog[] {
+  const logs: NormalizedLog[] = [];
+  const startStamp = parseSessionTimestamp(session.start ?? session.inLog);
+  if (startStamp) {
+    logs.push(createNormalizedLogFromSession(session, 'IN', startStamp, 'in'));
+  }
+
+  const status = typeof session.status === 'string' ? session.status.toLowerCase() : '';
+  const isOpen = status === 'open' || !session.end;
+
+  if (!isOpen) {
+    let endStamp = parseSessionTimestamp(session.end ?? session.outLog);
+    if (!endStamp && startStamp) {
+      const duration = asNumber(session.durationMin);
+      if (duration !== null) {
+        const endMs = startStamp.ms + duration * 60000;
+        endStamp = { iso: new Date(endMs).toISOString(), ms: endMs };
+      }
+    }
+    if (endStamp && (!startStamp || endStamp.ms > startStamp.ms)) {
+      logs.push(createNormalizedLogFromSession(session, 'OUT', endStamp, 'out'));
+    }
+  }
+
+  return logs;
 }
 
 export async function getLogsBetween(params: { from: Date; to: Date }): Promise<NormalizedLog[]> {
   const { from, to } = params;
-  const startIso = from.toISOString();
-  const endIso = to.toISOString();
-  const filterByFormula = `AND(NOT(IS_BEFORE({${LOG_FIELDS.timestamp}}, '${startIso}')), IS_BEFORE({${LOG_FIELDS.timestamp}}, '${endIso}'))`;
+  const fromMs = from.getTime();
+  const toMs = to.getTime();
+  if (toMs <= fromMs) {
+    return [];
+  }
 
-  const records = await withRetry(() =>
-    logsTable
-      .select({
-        filterByFormula,
-        pageSize: AIRTABLE_PAGE_SIZE,
-        sort: [{ field: LOG_FIELDS.timestamp, direction: 'asc' }],
-      })
-      .all(),
-  );
+  const startDate = formatJstDate(fromMs);
+  const endDate = formatJstDate(toMs - 1);
 
-  const normalized = records
-    .map((record) => toNormalizedLog(record))
-    .filter((log): log is NormalizedLog => Boolean(log));
+  const sessions = await listSessions({
+    dateFrom: startDate,
+    dateTo: endDate,
+    pageSize: AIRTABLE_PAGE_SIZE,
+  });
 
-  if (normalized.length === 0) {
-    return normalized;
+  const logs = sessions
+    .flatMap((session) => expandSessionRecord(session))
+    .filter((log) => log.timestampMs >= fromMs && log.timestampMs < toMs);
+
+  if (logs.length === 0) {
+    return [];
   }
 
   const usersMap = await getUsersMap();
-  const logs = normalized.sort((a, b) => a.timestampMs - b.timestampMs);
+  const sorted = logs.sort((a, b) => a.timestampMs - b.timestampMs);
 
-  return logs.map((log) => {
+  return sorted.map((log) => {
     const candidates = new Set<string>();
     if (log.userId) {
       candidates.add(log.userId);
@@ -277,8 +255,9 @@ export async function getLogsBetween(params: { from: Date; to: Date }): Promise<
     }
     for (const key of log.userLookupKeys) {
       if (!key) continue;
-      candidates.add(String(key));
-      candidates.add(String(key).toLowerCase());
+      const value = String(key);
+      candidates.add(value);
+      candidates.add(value.toLowerCase());
     }
 
     let resolvedName = log.userName;
