@@ -467,11 +467,10 @@ async function fetchUserHydrationMap(recordIds: string[]): Promise<Map<string, U
         .all(),
     );
 
-    const typedRecords = records as Array<{ id: string; fields: Partial<UserFields> }>;
-
-    for (const record of typedRecords) {
-      const name = asString(record.fields?.name) ?? asString(record.fields?.username) ?? null;
-      const userId = asNumber(record.fields?.userId);
+    for (const record of records) {
+      const fields = record.fields as Partial<UserFields> | undefined;
+      const name = asString(fields?.name) ?? asString(fields?.username) ?? null;
+      const userId = asNumber(fields?.userId);
       map.set(record.id, { name, userId });
     }
   }
