@@ -17,6 +17,9 @@ export type ReportRow = {
   siteName: string;
   clientName?: string;
   minutes: number;
+  startJst?: string | null;
+  endJst?: string | null;
+  overtimeHours?: string | null;
 };
 
 type DateParts = {
