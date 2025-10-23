@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import MachineLabel from '@/components/MachineLabel';
 
 type SessionRecord = {
   userName: string;
@@ -10,6 +11,7 @@ type SessionRecord = {
   hours?: number | null;
   status: '正常' | '稼働中';
   machineId: string | null | undefined;
+  machineName?: string | null;
   workDescription?: string | null;
 };
 
@@ -237,7 +239,13 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
                             const statusClass =
                               session.status === '稼働中' ? 'text-amber-600' : 'text-brand-primary';
                             const machineIdLabel =
-                              typeof session.machineId === 'string' ? session.machineId.trim() : '';
+                              typeof session.machineId === 'string'
+                                ? session.machineId.trim() || null
+                                : session.machineId ?? null;
+                            const machineNameLabel =
+                              typeof session.machineName === 'string'
+                                ? session.machineName.trim() || null
+                                : session.machineName ?? null;
                             return (
                               <div
                                 key={`${session.userName}-${session.clockInAt}-${index}`}
@@ -254,12 +262,11 @@ export default function DayDetailDrawer({ date, open, onClose }: DayDetailDrawer
                                   {typeof session.hours === 'number' ? <span>（{session.hours}時間）</span> : null}
                                   <span className={`text-xs sm:text-sm ${statusClass}`}>{session.status}</span>
                                 </div>
-                                <div className="mt-1 text-sm text-brand-text">
-                                  <span className="mr-2 opacity-70">機械</span>
-                                  <span className="tabular-nums">
-                                    {machineIdLabel.length > 0 ? machineIdLabel : '-'}
-                                  </span>
-                                </div>
+                                <MachineLabel
+                                  id={machineIdLabel}
+                                  name={machineNameLabel}
+                                  className="mt-1 text-sm text-brand-text"
+                                />
                                 <p className="mt-1 text-sm text-brand-muted">
                                   業務内容 {session.workDescription ?? '—'}
                                 </p>
