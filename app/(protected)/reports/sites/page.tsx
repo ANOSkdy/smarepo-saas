@@ -29,7 +29,7 @@ type ReportColumnSession = {
   machineId?: string | number | null;
   machineID?: string | number | null;
   machineName?: string | null;
-  machine?: string | null;
+  machine?: unknown;
   durationMin?: number | null;
   durationMinutes?: number | null;
   minutes?: number | null;
@@ -163,13 +163,41 @@ export default function SiteReportPage() {
 
   const sessionRowsByColumnKey = useMemo(() => {
     const map = new Map<string, SessionRow[]>();
+
     const coerceId = (value: unknown): string | number | null => {
       if (value == null) {
         return null;
       }
-      if (typeof value === 'string' || typeof value === 'number') {
-        const text = String(value).trim();
-        return text.length > 0 ? (typeof value === 'number' ? value : text) : null;
+      if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : null;
+      }
+      if (typeof value === 'string') {
+        const text = value.trim();
+        return text.length > 0 ? text : null;
+      }
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const coerced = coerceId(item);
+          if (coerced != null) {
+            return coerced;
+          }
+        }
+        return null;
+      }
+      if (typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        if ('id' in record) {
+          const coerced = coerceId(record.id);
+          if (coerced != null) {
+            return coerced;
+          }
+        }
+        if ('value' in record) {
+          const coerced = coerceId(record.value);
+          if (coerced != null) {
+            return coerced;
+          }
+        }
       }
       return null;
     };
@@ -178,6 +206,55 @@ export default function SiteReportPage() {
       if (typeof value === 'string') {
         const trimmed = value.trim();
         return trimmed.length > 0 ? trimmed : null;
+      }
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const coerced = coerceName(item);
+          if (coerced) {
+            return coerced;
+          }
+        }
+        return null;
+      }
+      if (value && typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        const keys = [
+          'name',
+          'machineName',
+          'machinename',
+          'label',
+          'displayName',
+          'displayname',
+          'title',
+        ];
+        for (const key of keys) {
+          if (key in record) {
+            const coerced = coerceName(record[key]);
+            if (coerced) {
+              return coerced;
+            }
+          }
+        }
+      }
+      return null;
+    };
+
+    const pickFirstId = (...values: unknown[]): string | number | null => {
+      for (const value of values) {
+        const coerced = coerceId(value);
+        if (coerced != null) {
+          return coerced;
+        }
+      }
+      return null;
+    };
+
+    const pickFirstName = (...values: unknown[]): string | null => {
+      for (const value of values) {
+        const coerced = coerceName(value);
+        if (coerced) {
+          return coerced;
+        }
       }
       return null;
     };
@@ -207,6 +284,8 @@ export default function SiteReportPage() {
       return null;
     };
 
+    const normalizeKey = (key: string) => key.replace(/[\s_()\-]/g, '').toLowerCase();
+
     columns.forEach((column) => {
       const sessionRows: SessionRow[] = [];
 
@@ -216,14 +295,55 @@ export default function SiteReportPage() {
             return;
           }
           const session = entry as ReportColumnSession;
+          const record = session as Record<string, unknown>;
+          const normalizedValues = new Map<string, unknown>();
+          for (const [key, value] of Object.entries(record)) {
+            const normalized = normalizeKey(key);
+            if (!normalizedValues.has(normalized)) {
+              normalizedValues.set(normalized, value);
+            }
+          }
+
+          const readNormalized = (...keys: string[]) => {
+            for (const key of keys) {
+              const normalized = normalizeKey(key);
+              if (normalizedValues.has(normalized)) {
+                return normalizedValues.get(normalized);
+              }
+            }
+            return undefined;
+          };
+
+          const machineField = record.machine;
           const machineId =
-            coerceId(session.machineId ?? session.machineID ?? column.machineId) ?? null;
+            pickFirstId(
+              session.machineId,
+              session.machineID,
+              readNormalized('machineid'),
+              readNormalized('machineidfrommachine'),
+              readNormalized('machinenumber'),
+              readNormalized('machinecode'),
+              readNormalized('machinecodefrommachine'),
+              typeof machineField === 'object' && machineField !== null && !Array.isArray(machineField)
+                ? (machineField as Record<string, unknown>).id
+                : undefined,
+            ) ?? null;
           const machineName =
-            coerceName(session.machineName ?? session.machine ?? column.machineName) ?? null;
+            pickFirstName(
+              session.machineName,
+              readNormalized('machinename'),
+              readNormalized('machinenamefrommachine'),
+              readNormalized('machinelabel'),
+              readNormalized('machinedisplayname'),
+              readNormalized('machinenamejapanese'),
+              typeof machineField === 'object' && machineField !== null && !Array.isArray(machineField)
+                ? machineField
+                : undefined,
+            );
           sessionRows.push({
             user: session.user,
             machineId,
-            machineName,
+            machineName: machineName ?? null,
             durationMin: coerceDurationMin(session),
             hours: coerceHours(session),
             date: typeof session.date === 'string' ? session.date : undefined,
