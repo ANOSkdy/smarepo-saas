@@ -44,6 +44,8 @@ export type ReportColumn = {
   userRecId?: string;
   userName: string;
   workDescription: string;
+  machineIds: Array<string | number>;
+  machineNames: string[];
 };
 
 export type DayRow = {
@@ -51,6 +53,15 @@ export type DayRow = {
   day: number;
   dow: string;
   values: number[];
+};
+
+type ColumnAccumulator = {
+  key: string;
+  userRecId?: string;
+  userName: string;
+  workDescription: string;
+  machineIds: Set<string | number>;
+  machineNames: Set<string>;
 };
 
 export async function GET(req: NextRequest) {
@@ -91,7 +102,7 @@ export async function GET(req: NextRequest) {
   const normalizedSiteName = normalizeText(siteName);
   const sessions = await fetchSessionReportRows({ year, month });
 
-  const columnMap = new Map<string, ReportColumn>();
+  const columnMap = new Map<string, ColumnAccumulator>();
   const minutesByKey = new Map<string, number>();
 
   for (const session of sessions) {
@@ -119,7 +130,27 @@ export async function GET(req: NextRequest) {
         userRecId: session.userRecordId ?? undefined,
         userName,
         workDescription,
+        machineIds: new Set(),
+        machineNames: new Set(),
       });
+    }
+
+    const column = columnMap.get(columnKey);
+    if (!column) {
+      continue;
+    }
+
+    const machineId = session.machineId;
+    if (machineId != null) {
+      const machineIdText = typeof machineId === 'string' ? machineId.trim() : `${machineId}`.trim();
+      if (machineIdText) {
+        column.machineIds.add(typeof machineId === 'number' ? machineId : machineIdText);
+      }
+    }
+
+    const machineName = session.machineName?.trim();
+    if (machineName) {
+      column.machineNames.add(machineName);
     }
 
     const rawMinutes =
@@ -133,12 +164,21 @@ export async function GET(req: NextRequest) {
     minutesByKey.set(groupKey, (minutesByKey.get(groupKey) ?? 0) + minutes);
   }
 
-  const columns = Array.from(columnMap.values()).sort((a, b) => {
-    if (a.userName !== b.userName) {
-      return a.userName.localeCompare(b.userName, 'ja');
-    }
-    return a.workDescription.localeCompare(b.workDescription, 'ja');
-  });
+  const columns = Array.from(columnMap.values())
+    .sort((a, b) => {
+      if (a.userName !== b.userName) {
+        return a.userName.localeCompare(b.userName, 'ja');
+      }
+      return a.workDescription.localeCompare(b.workDescription, 'ja');
+    })
+    .map<ReportColumn>((column) => ({
+      key: column.key,
+      userRecId: column.userRecId,
+      userName: column.userName,
+      workDescription: column.workDescription,
+      machineIds: Array.from(column.machineIds),
+      machineNames: Array.from(column.machineNames),
+    }));
 
   const hoursByKey = new Map<string, number>();
   for (const [groupKey, totalMinutes] of minutesByKey.entries()) {
