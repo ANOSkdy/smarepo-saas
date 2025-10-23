@@ -24,10 +24,11 @@ async function fetchUsers(): Promise<string[]> {
   return Array.from(names).sort((a, b) => a.localeCompare(b, 'ja'));
 }
 
-function formatMinutes(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+function formatWorkingHours(minutes: number): string {
+  const safe = Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : 0;
+  const capped = Math.min(safe, 450);
+  const hours = capped / 60;
+  return `${hours.toFixed(1)}h`;
 }
 
 function toSingleValue(value: string | string[] | undefined): string {
@@ -232,17 +233,26 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
                     現場名
                   </th>
                   <th scope="col" className="px-4 py-3 text-left font-semibold">
-                    元請・代理人
+                    元請代理人
+                  </th>
+                  <th scope="col" className="px-4 py-3 text-left font-semibold">
+                    始業時間
+                  </th>
+                  <th scope="col" className="px-4 py-3 text-left font-semibold">
+                    終業時間
                   </th>
                   <th scope="col" className="px-4 py-3 text-left font-semibold">
                     稼働時間
+                  </th>
+                  <th scope="col" className="px-4 py-3 text-left font-semibold">
+                    超過
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white text-sm text-gray-900">
                 {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500">
+                    <td colSpan={9} className="px-4 py-6 text-center text-sm text-gray-500">
                       条件に一致するデータがありません。
                     </td>
                   </tr>
@@ -257,7 +267,10 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
                       <td className="px-4 py-3">{row.day}</td>
                       <td className="px-4 py-3">{row.siteName}</td>
                       <td className="px-4 py-3">{row.clientName ?? ''}</td>
-                      <td className="px-4 py-3 font-mono text-sm">{formatMinutes(row.minutes)}</td>
+                      <td className="px-4 py-3">{row.startJst ?? ''}</td>
+                      <td className="px-4 py-3">{row.endJst ?? ''}</td>
+                      <td className="px-4 py-3">{formatWorkingHours(row.minutes)}</td>
+                      <td className="px-4 py-3">{row.overtimeHours ?? '0.0h'}</td>
                     </tr>
                   ))
                 )}
