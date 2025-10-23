@@ -279,6 +279,67 @@ export default function StampCard({
   const machineId = searchParams.get('machineId') ?? searchParams.get('machineid');
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const targetMachineId = machineId?.trim();
+    if (!targetMachineId) {
+      return;
+    }
+
+    const navigationEntry =
+      (performance?.getEntriesByType?.('navigation')?.[0] as
+        | PerformanceNavigationTiming
+        | undefined) ?? undefined;
+    const navigationType = navigationEntry?.type;
+    if (navigationType && navigationType !== 'navigate') {
+      return;
+    }
+
+    const guardKey = `smarepo:auto-switch:${targetMachineId}`;
+    const now = Date.now();
+    let shouldProceed = true;
+    try {
+      const lastExecutedAtRaw = window.sessionStorage.getItem(guardKey);
+      const lastExecutedAt = lastExecutedAtRaw ? Number(lastExecutedAtRaw) : NaN;
+      if (!Number.isNaN(lastExecutedAt) && now - lastExecutedAt < 10_000) {
+        shouldProceed = false;
+      } else {
+        window.sessionStorage.setItem(guardKey, String(now));
+      }
+    } catch {
+      // sessionStorageが利用できない場合はガードせずに続行
+    }
+
+    if (!shouldProceed) {
+      return;
+    }
+
+    (async () => {
+      try {
+        const response = await fetch('/api/stamp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ intent: 'switch', toMachineId: targetMachineId }),
+          cache: 'no-store',
+        });
+        const payload: unknown = await response.json().catch(() => null);
+        const switched =
+          typeof payload === 'object' &&
+          payload !== null &&
+          'switched' in payload &&
+          (payload as { switched?: unknown }).switched === true;
+        if (response.ok && switched) {
+          router.refresh();
+        }
+      } catch {
+        // ネットワークエラー時は既存の退勤UIにフォールバック
+      }
+    })();
+  }, [machineId, router]);
+
+  useEffect(() => {
     if (stampType === 'IN') {
       fetch('/api/masters/work-types')
         .then((res) => {
