@@ -24,10 +24,11 @@ async function fetchUsers(): Promise<string[]> {
   return Array.from(names).sort((a, b) => a.localeCompare(b, 'ja'));
 }
 
-function formatMinutes(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+function formatWorkingHours(minutes: number): string {
+  const safe = Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : 0;
+  const capped = Math.min(safe, 450);
+  const hours = capped / 60;
+  return `${hours.toFixed(1)}h`;
 }
 
 function toSingleValue(value: string | string[] | undefined): string {
@@ -268,8 +269,8 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
                       <td className="px-4 py-3">{row.clientName ?? ''}</td>
                       <td className="px-4 py-3">{row.startJst ?? ''}</td>
                       <td className="px-4 py-3">{row.endJst ?? ''}</td>
-                      <td className="px-4 py-3 font-mono text-sm">{formatMinutes(row.minutes)}</td>
-                      <td className="px-4 py-3">{row.overtimeHours ?? '00:00'}</td>
+                      <td className="px-4 py-3">{formatWorkingHours(row.minutes)}</td>
+                      <td className="px-4 py-3">{row.overtimeHours ?? '0.0h'}</td>
                     </tr>
                   ))
                 )}

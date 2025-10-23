@@ -73,17 +73,16 @@ function buildDailyAggregates(sessions: SessionReportRow[]): Map<string, DailyAg
   return aggregates;
 }
 
-function formatClockFromMinutes(minutes: number): string {
-  const safe = Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : 0;
-  const hours = Math.floor(safe / 60);
-  const mins = safe % 60;
-  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+function formatHoursDecimal(minutes: number): string {
+  const safeMinutes = Number.isFinite(minutes) ? Math.max(0, minutes) : 0;
+  const hours = safeMinutes / 60;
+  return `${hours.toFixed(1)}h`;
 }
 
 function formatOvertime(totalMinutes: number): string {
   const safeMinutes = Number.isFinite(totalMinutes) ? Math.round(totalMinutes) : 0;
   const overtimeMinutes = Math.max(0, safeMinutes - 450);
-  return formatClockFromMinutes(overtimeMinutes);
+  return formatHoursDecimal(overtimeMinutes);
 }
 
 function formatTimestampJst(value: string | null | undefined): string | null {
@@ -95,26 +94,20 @@ function formatTimestampJst(value: string | null | undefined): string | null {
     return null;
   }
   const formatter = new Intl.DateTimeFormat('ja-JP', {
-    year: '2-digit',
-    month: '2-digit',
-    day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
     timeZone: 'Asia/Tokyo',
   });
   const parts = formatter.formatToParts(date);
-  const pick = (type: 'year' | 'month' | 'day' | 'hour' | 'minute') =>
+  const pick = (type: 'hour' | 'minute') =>
     parts.find((part) => part.type === type)?.value ?? '';
-  const year = pick('year');
-  const month = pick('month');
-  const day = pick('day');
   const hour = pick('hour');
   const minute = pick('minute');
-  if (!year || !month || !day || !hour || !minute) {
+  if (!hour || !minute) {
     return null;
   }
-  return `${year}/${month}/${day} ${hour}:${minute}`;
+  return `${hour}:${minute}`;
 }
 
 function pickFirstStringField(fields: Record<string, unknown>, keys: string[]): string | null {
