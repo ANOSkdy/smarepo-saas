@@ -2,11 +2,12 @@
 
 import './sites.css';
 
-import { useEffect, useMemo, useState, type CSSProperties, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ChangeEvent } from 'react';
 import ReportsTabs from '@/components/reports/ReportsTabs';
 import PrintControls from '@/components/PrintControls';
 import { formatHoursOrEmpty, getJstParts } from '@/lib/jstDate';
 import WorkTypeCheckboxGroup from './_components/WorkTypeCheckboxGroup';
+import { sumColumnHours, toMachineHeader, type SessionRow } from './_lib/gridUtils';
 
 type SiteMaster = {
   id: string;
@@ -23,10 +24,32 @@ type WorkType = {
   };
 };
 
+type ReportColumnSession = {
+  user?: string | number;
+  machineId?: string | number | null;
+  machineID?: string | number | null;
+  machineName?: string | null;
+  machine?: unknown;
+  durationMin?: number | null;
+  durationMinutes?: number | null;
+  minutes?: number | null;
+  mins?: number | null;
+  hours?: number | null;
+  durationHours?: number | null;
+  totalHours?: number | null;
+  date?: string;
+  [key: string]: unknown;
+};
+
 type ReportColumn = {
   key: string;
   userName: string;
   workDescription: string;
+  machineId?: string | number | null;
+  machineIds?: Array<string | number | null>;
+  machineName?: string | null;
+  machineNames?: Array<string | null>;
+  sessions?: ReportColumnSession[];
 };
 
 type DayRow = {
@@ -137,6 +160,268 @@ export default function SiteReportPage() {
     () => columns.map((column, index) => ({ column, index })),
     [columns],
   );
+
+  const sessionRowsByColumnKey = useMemo(() => {
+    const map = new Map<string, SessionRow[]>();
+
+    const coerceId = (value: unknown): string | number | null => {
+      if (value == null) {
+        return null;
+      }
+      if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : null;
+      }
+      if (typeof value === 'string') {
+        const text = value.trim();
+        return text.length > 0 ? text : null;
+      }
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const coerced = coerceId(item);
+          if (coerced != null) {
+            return coerced;
+          }
+        }
+        return null;
+      }
+      if (typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        if ('id' in record) {
+          const coerced = coerceId(record.id);
+          if (coerced != null) {
+            return coerced;
+          }
+        }
+        if ('value' in record) {
+          const coerced = coerceId(record.value);
+          if (coerced != null) {
+            return coerced;
+          }
+        }
+      }
+      return null;
+    };
+
+    const coerceName = (value: unknown): string | null => {
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      }
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const coerced = coerceName(item);
+          if (coerced) {
+            return coerced;
+          }
+        }
+        return null;
+      }
+      if (value && typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        const keys = [
+          'name',
+          'machineName',
+          'machinename',
+          'label',
+          'displayName',
+          'displayname',
+          'title',
+        ];
+        for (const key of keys) {
+          if (key in record) {
+            const coerced = coerceName(record[key]);
+            if (coerced) {
+              return coerced;
+            }
+          }
+        }
+      }
+      return null;
+    };
+
+    const pickFirstId = (...values: unknown[]): string | number | null => {
+      for (const value of values) {
+        const coerced = coerceId(value);
+        if (coerced != null) {
+          return coerced;
+        }
+      }
+      return null;
+    };
+
+    const pickFirstName = (...values: unknown[]): string | null => {
+      for (const value of values) {
+        const coerced = coerceName(value);
+        if (coerced) {
+          return coerced;
+        }
+      }
+      return null;
+    };
+
+    const coerceDurationMin = (session: ReportColumnSession): number | null => {
+      const candidates = [
+        session.durationMin,
+        session.durationMinutes,
+        session.minutes,
+        session.mins,
+      ];
+      for (const candidate of candidates) {
+        if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+          return candidate;
+        }
+      }
+      return null;
+    };
+
+    const coerceHours = (session: ReportColumnSession): number | null => {
+      const candidates = [session.hours, session.durationHours, session.totalHours];
+      for (const candidate of candidates) {
+        if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+          return candidate;
+        }
+      }
+      return null;
+    };
+
+    const normalizeKey = (key: string) => key.replace(/[\s_()\-]/g, '').toLowerCase();
+
+    columns.forEach((column) => {
+      const sessionRows: SessionRow[] = [];
+
+      if (Array.isArray(column.sessions)) {
+        column.sessions.forEach((entry) => {
+          if (!entry || typeof entry !== 'object') {
+            return;
+          }
+          const session = entry as ReportColumnSession;
+          const record = session as Record<string, unknown>;
+          const normalizedValues = new Map<string, unknown>();
+          for (const [key, value] of Object.entries(record)) {
+            const normalized = normalizeKey(key);
+            if (!normalizedValues.has(normalized)) {
+              normalizedValues.set(normalized, value);
+            }
+          }
+
+          const readNormalized = (...keys: string[]) => {
+            for (const key of keys) {
+              const normalized = normalizeKey(key);
+              if (normalizedValues.has(normalized)) {
+                return normalizedValues.get(normalized);
+              }
+            }
+            return undefined;
+          };
+
+          const machineField = record.machine;
+          const machineId =
+            pickFirstId(
+              session.machineId,
+              session.machineID,
+              readNormalized('machineid'),
+              readNormalized('machineidfrommachine'),
+              readNormalized('machinenumber'),
+              readNormalized('machinecode'),
+              readNormalized('machinecodefrommachine'),
+              typeof machineField === 'object' && machineField !== null && !Array.isArray(machineField)
+                ? (machineField as Record<string, unknown>).id
+                : undefined,
+            ) ?? null;
+          const machineName =
+            pickFirstName(
+              session.machineName,
+              readNormalized('machinename'),
+              readNormalized('machinenamefrommachine'),
+              readNormalized('machinelabel'),
+              readNormalized('machinedisplayname'),
+              readNormalized('machinenamejapanese'),
+              typeof machineField === 'object' && machineField !== null && !Array.isArray(machineField)
+                ? machineField
+                : undefined,
+            );
+          sessionRows.push({
+            user: session.user,
+            machineId,
+            machineName: machineName ?? null,
+            durationMin: coerceDurationMin(session),
+            hours: coerceHours(session),
+            date: typeof session.date === 'string' ? session.date : undefined,
+          });
+        });
+      }
+
+      const hasMachineInfo = sessionRows.some(
+        (row) => row.machineId != null || (row.machineName != null && row.machineName !== ''),
+      );
+
+      if (!hasMachineInfo) {
+        const machineIds = Array.isArray(column.machineIds)
+          ? column.machineIds
+          : column.machineId != null
+            ? [column.machineId]
+            : [];
+        const machineNames = Array.isArray(column.machineNames)
+          ? column.machineNames
+          : column.machineName != null
+            ? [column.machineName]
+            : [];
+        const length = Math.max(machineIds.length, machineNames.length);
+        for (let index = 0; index < length; index += 1) {
+          const idCandidate =
+            machineIds[index] ?? machineIds[0] ?? column.machineId ?? null;
+          const nameCandidate =
+            machineNames[index] ?? machineNames[0] ?? column.machineName ?? null;
+          const coercedId = coerceId(idCandidate);
+          const coercedName = coerceName(nameCandidate);
+          if (coercedId != null || coercedName != null) {
+            sessionRows.push({
+              user: undefined,
+              machineId: coercedId,
+              machineName: coercedName,
+              durationMin: null,
+              hours: null,
+            });
+          }
+        }
+      }
+
+      map.set(column.key, sessionRows);
+    });
+
+    return map;
+  }, [columns]);
+
+  const getMachineLabel = useCallback(
+    (columnKey: string) => {
+      const rows = sessionRowsByColumnKey.get(columnKey) ?? [];
+      return toMachineHeader(rows);
+    },
+    [sessionRowsByColumnKey],
+  );
+
+  const totalsByColumnKey = useMemo(() => {
+    const map = new Map<string, number>();
+    indexedColumns.forEach(({ column, index }) => {
+      const rows = sessionRowsByColumnKey.get(column.key) ?? [];
+      const hasDurations = rows.some(
+        (row) => typeof row.durationMin === 'number' || typeof row.hours === 'number',
+      );
+      if (hasDurations) {
+        map.set(column.key, sumColumnHours(rows));
+        return;
+      }
+      let total = 0;
+      for (const day of days) {
+        const value = day.values[index];
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          total += value;
+        }
+      }
+      map.set(column.key, Math.round(total * 10) / 10);
+    });
+    return map;
+  }, [days, indexedColumns, sessionRowsByColumnKey]);
 
   useEffect(() => {
     setEmployeeFilter((prev) => {
@@ -371,7 +656,7 @@ export default function SiteReportPage() {
                         : 'border px-2 py-1 text-left';
                       return (
                         <th key={`work-${column.key}`} className={className}>
-                          {column.workDescription}
+                          {getMachineLabel(column.key)}
                         </th>
                       );
                     })}
@@ -405,6 +690,28 @@ export default function SiteReportPage() {
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr className="bg-gray-100">
+                    <td className="col-narrow border px-2 py-1 font-semibold">稼働合計</td>
+                    <td className="col-narrow border px-2 py-1" />
+                    {indexedColumns.map(({ column }) => {
+                      const hidden = hasEmployeeFilter && !selectedEmployeeSet.has(column.userName);
+                      const baseClass = 'border px-2 py-1 text-right tabular-nums font-semibold';
+                      const className = hidden ? `${baseClass} screen-hidden` : baseClass;
+                      const total = totalsByColumnKey.get(column.key);
+                      const safeTotal =
+                        typeof total === 'number' && Number.isFinite(total) ? total : 0;
+                      return (
+                        <td key={`total-${column.key}`} className={className}>
+                          {safeTotal.toFixed(1)}
+                        </td>
+                      );
+                    })}
+                    {Array.from({ length: columnPaddingCount }).map((_, index) => (
+                      <td key={`total-pad-${index}`} className="border px-2 py-1" aria-hidden="true" />
+                    ))}
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </div>
@@ -434,7 +741,7 @@ export default function SiteReportPage() {
                           <th className="col-narrow border px-2 py-1" />
                           {chunk.map(({ column }) => (
                             <th key={`print-work-${column.key}`} className="border px-2 py-1 text-left">
-                              {column.workDescription}
+                              {getMachineLabel(column.key)}
                             </th>
                           ))}
                         </tr>
@@ -458,6 +765,25 @@ export default function SiteReportPage() {
                           );
                         })}
                       </tbody>
+                      <tfoot>
+                        <tr className="bg-gray-100">
+                          <td className="col-narrow border px-2 py-1 font-semibold">稼働合計</td>
+                          <td className="col-narrow border px-2 py-1" />
+                          {chunk.map(({ column }) => {
+                            const total = totalsByColumnKey.get(column.key);
+                            const safeTotal =
+                              typeof total === 'number' && Number.isFinite(total) ? total : 0;
+                            return (
+                              <td
+                                key={`print-total-${column.key}`}
+                                className="border px-2 py-1 text-right tabular-nums font-semibold"
+                              >
+                                {safeTotal.toFixed(1)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 );
