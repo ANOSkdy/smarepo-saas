@@ -26,6 +26,17 @@ function isSameSiteName(a: string, b: string) {
   return a.trim().localeCompare(b.trim(), 'ja', { sensitivity: 'base' }) === 0;
 }
 
+function normalizeMachineIdValue(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : null;
+  }
+  return null;
+}
+
 function resolveSessionUserKey(session: SessionReportRow) {
   if (session.userRecordId) {
     return session.userRecordId;
@@ -74,8 +85,9 @@ export async function GET(req: NextRequest) {
   const year = Number(searchParams.get('year'));
   const month = Number(searchParams.get('month'));
   const siteId = searchParams.get('siteId') ?? '';
-  const workFilters = searchParams
-    .getAll('work')
+  const machineIdsFilter = searchParams
+    .getAll('machineIds')
+    .flatMap((value) => value.split(','))
     .map((value) => value.trim())
     .filter(Boolean);
 
@@ -98,7 +110,7 @@ export async function GET(req: NextRequest) {
     console.warn('[reports][sites] failed to load site', error);
   }
 
-  const workSet = new Set(workFilters);
+  const machineIdSet = new Set(machineIdsFilter);
   const normalizedSiteName = normalizeText(siteName);
   const sessions = await fetchSessionReportRows({ year, month });
 
@@ -116,10 +128,17 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
-    const workDescription = session.workDescription?.trim() || '（未設定）';
-    if (workSet.size > 0 && !workSet.has(workDescription)) {
-      continue;
+    if (machineIdSet.size > 0) {
+      const matchesMachine = [session.machineId, session.machineRecordId].some((candidate) => {
+        const normalized = normalizeMachineIdValue(candidate);
+        return normalized != null && machineIdSet.has(normalized);
+      });
+      if (!matchesMachine) {
+        continue;
+      }
     }
+
+    const workDescription = session.workDescription?.trim() || '（未設定）';
 
     const userName = session.userName?.trim() || '不明ユーザー';
     const userKey = resolveSessionUserKey(session);
@@ -198,7 +217,6 @@ export async function GET(req: NextRequest) {
     year,
     month,
     site: { id: siteId, name: siteName, client },
-    works: workFilters,
     columns,
     days,
   });

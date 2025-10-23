@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties, type Cha
 import ReportsTabs from '@/components/reports/ReportsTabs';
 import PrintControls from '@/components/PrintControls';
 import { formatHoursOrEmpty, getJstParts } from '@/lib/jstDate';
-import WorkTypeCheckboxGroup from './_components/WorkTypeCheckboxGroup';
+import MachineCheckboxGroup from './_components/MachineCheckboxGroup';
 import { sumColumnHours, toMachineHeader, type SessionRow } from './_lib/gridUtils';
 
 type SiteMaster = {
@@ -17,10 +17,11 @@ type SiteMaster = {
   };
 };
 
-type WorkType = {
+type MachineMaster = {
   id: string;
-  fields: {
-    name: string;
+  fields?: {
+    machineid?: string | null;
+    name?: string | null;
   };
 };
 
@@ -80,10 +81,10 @@ function toText(value: unknown) {
 export default function SiteReportPage() {
   const [monthValue, setMonthValue] = useState(defaultMonth);
   const [sites, setSites] = useState<SiteMaster[]>([]);
-  const [works, setWorks] = useState<WorkType[]>([]);
+  const [machines, setMachines] = useState<MachineMaster[]>([]);
   const [siteId, setSiteId] = useState('');
   const [siteClient, setSiteClient] = useState('');
-  const [selectedWorkIds, setSelectedWorkIds] = useState<string[]>([]);
+  const [machineFilter, setMachineFilter] = useState<string[]>([]);
 
   const [columns, setColumns] = useState<ReportColumn[]>([]);
   const [days, setDays] = useState<DayRow[]>([]);
@@ -96,18 +97,38 @@ export default function SiteReportPage() {
     let active = true;
     async function loadMasters() {
       try {
-        const [siteRes, workRes] = await Promise.all([
+        const machineResponsePromise = fetch('/api/masters/machines', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+        }).catch((error) => {
+          console.warn('[reports][sites] failed to fetch machine masters', error);
+          return null;
+        });
+        const [siteRes, machineRes] = await Promise.all([
           fetch('/api/masters/sites', { cache: 'no-store', credentials: 'same-origin' }),
-          fetch('/api/masters/work-types', { cache: 'no-store', credentials: 'same-origin' }),
+          machineResponsePromise,
         ]);
-        if (!siteRes.ok || !workRes.ok) {
-          throw new Error('Failed to load masters');
+        if (!siteRes.ok) {
+          throw new Error('Failed to load site masters');
         }
         const sitesJson = (await siteRes.json()) as SiteMaster[] | null;
-        const worksJson = (await workRes.json()) as WorkType[] | null;
         if (!active) return;
         setSites(Array.isArray(sitesJson) ? sitesJson : []);
-        setWorks(Array.isArray(worksJson) ? worksJson : []);
+        if (machineRes?.ok) {
+          const json = await machineRes.json();
+          if (!active) return;
+          const list: MachineMaster[] = Array.isArray(json?.records)
+            ? json.records
+            : Array.isArray(json)
+              ? json
+              : [];
+          setMachines(list);
+        } else if (machineRes && !machineRes.ok) {
+          console.warn('[reports][sites] machine masters responded with non-ok status', machineRes.status);
+          if (active) {
+            setMachines([]);
+          }
+        }
       } catch (err) {
         console.error('[reports][sites] failed to load masters', err);
       }
@@ -137,14 +158,72 @@ export default function SiteReportPage() {
     return { year: parsedYear, month: parsedMonth };
   }, [monthValue]);
 
-  const workOptions = useMemo(
-    () =>
-      works.map((work) => ({
-        id: work.id,
-        name: toText(work.fields.name),
-      })),
-    [works],
-  );
+  const derivedMachineLabels = useMemo(() => {
+    const map = new Map<string, string>();
+    columns.forEach((column) => {
+      const rawIds = Array.isArray(column.machineIds)
+        ? column.machineIds
+        : column.machineId != null
+          ? [column.machineId]
+          : [];
+      const rawNames = Array.isArray(column.machineNames)
+        ? column.machineNames
+        : column.machineName != null
+          ? [column.machineName]
+          : [];
+      rawIds.forEach((value, index) => {
+        if (value == null) {
+          return;
+        }
+        const idText =
+          typeof value === 'number'
+            ? String(value)
+            : typeof value === 'string'
+              ? value.trim()
+              : '';
+        if (!idText) {
+          return;
+        }
+        const nameCandidate = rawNames[index] ?? rawNames[0] ?? null;
+        const nameText =
+          typeof nameCandidate === 'string' && nameCandidate.trim().length > 0
+            ? nameCandidate.trim()
+            : '';
+        if (!map.has(idText) || (!map.get(idText) && nameText)) {
+          map.set(idText, nameText);
+        }
+      });
+    });
+    return map;
+  }, [columns]);
+
+  const machineOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    derivedMachineLabels.forEach((label, id) => {
+      map.set(id, label);
+    });
+    machines.forEach((machine) => {
+      const machineIdRaw =
+        typeof machine.fields?.machineid === 'string' ? machine.fields.machineid.trim() : '';
+      const fallbackId = typeof machine.id === 'string' ? machine.id.trim() : String(machine.id);
+      const id = machineIdRaw || fallbackId;
+      if (!id) {
+        return;
+      }
+      const nameRaw =
+        typeof machine.fields?.name === 'string' ? machine.fields.name.trim() : '';
+      const existing = map.get(id) ?? '';
+      const label = nameRaw || existing || id;
+      map.set(id, label);
+    });
+    return Array.from(map.entries())
+      .filter(([id]) => id.trim().length > 0)
+      .sort((a, b) => a[0].localeCompare(b[0], 'ja'))
+      .map(([id, name]) => ({
+        id,
+        name: name.trim().length > 0 ? name : id,
+      }));
+  }, [derivedMachineLabels, machines]);
 
   const employeeOptions = useMemo(() => {
     const names = new Set<string>();
@@ -495,11 +574,10 @@ export default function SiteReportPage() {
         month: String(month),
         siteId,
       });
-      selectedWorkIds.forEach((id) => {
-        const work = works.find((item) => item.id === id);
-        const name = work?.fields?.name;
-        if (name) {
-          params.append('work', String(name));
+      machineFilter.forEach((id) => {
+        const normalized = typeof id === 'string' ? id.trim() : String(id).trim();
+        if (normalized) {
+          params.append('machineIds', normalized);
         }
       });
       const response = await fetch(`/api/reports/sites?${params.toString()}`, {
@@ -570,13 +648,11 @@ export default function SiteReportPage() {
               readOnly
             />
           </label>
-          <div className="flex flex-col gap-1 xl:col-span-2">
-            <span className="text-sm text-gray-600">業務内容（チェック可）</span>
-            <WorkTypeCheckboxGroup
-              className="rounded border p-3"
-              options={workOptions}
-              value={selectedWorkIds}
-              onChange={setSelectedWorkIds}
+          <div className="xl:col-span-2">
+            <MachineCheckboxGroup
+              options={machineOptions}
+              value={machineFilter}
+              onChange={setMachineFilter}
             />
           </div>
         </div>
