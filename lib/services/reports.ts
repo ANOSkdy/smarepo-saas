@@ -73,10 +73,48 @@ function buildDailyAggregates(sessions: SessionReportRow[]): Map<string, DailyAg
   return aggregates;
 }
 
+function formatClockFromMinutes(minutes: number): string {
+  const safe = Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : 0;
+  const hours = Math.floor(safe / 60);
+  const mins = safe % 60;
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+}
+
 function formatOvertime(totalMinutes: number): string {
-  const safeMinutes = Number.isFinite(totalMinutes) ? totalMinutes : 0;
+  const safeMinutes = Number.isFinite(totalMinutes) ? Math.round(totalMinutes) : 0;
   const overtimeMinutes = Math.max(0, safeMinutes - 450);
-  return `${(overtimeMinutes / 60).toFixed(1)}h`;
+  return formatClockFromMinutes(overtimeMinutes);
+}
+
+function formatTimestampJst(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const formatter = new Intl.DateTimeFormat('ja-JP', {
+    year: '2-digit',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Tokyo',
+  });
+  const parts = formatter.formatToParts(date);
+  const pick = (type: 'year' | 'month' | 'day' | 'hour' | 'minute') =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  const year = pick('year');
+  const month = pick('month');
+  const day = pick('day');
+  const hour = pick('hour');
+  const minute = pick('minute');
+  if (!year || !month || !day || !hour || !minute) {
+    return null;
+  }
+  return `${year}/${month}/${day} ${hour}:${minute}`;
 }
 
 function pickFirstStringField(fields: Record<string, unknown>, keys: string[]): string | null {
@@ -179,6 +217,9 @@ export async function getReportRowsByUserName(
       const resolvedClientName =
         session.clientName?.trim() || aggregate?.clientName || siteClientName || undefined;
       const totalMinutes = aggregate?.totalMinutes ?? 0;
+      const resolvedStart = aggregate?.firstStart ?? session.start ?? null;
+      const resolvedEnd = aggregate?.lastEnd ?? session.end ?? null;
+
       return {
         year: session.year ?? 0,
         month: session.month ?? 0,
@@ -186,8 +227,8 @@ export async function getReportRowsByUserName(
         siteName: session.siteName ?? '',
         clientName: resolvedClientName ?? undefined,
         minutes,
-        startJst: aggregate?.firstStart ?? session.start ?? null,
-        endJst: aggregate?.lastEnd ?? session.end ?? null,
+        startJst: formatTimestampJst(resolvedStart),
+        endJst: formatTimestampJst(resolvedEnd),
         overtimeHours: formatOvertime(totalMinutes),
       } satisfies ReportRow;
     })
