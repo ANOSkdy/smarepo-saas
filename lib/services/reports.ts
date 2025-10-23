@@ -5,6 +5,37 @@ import { applyTimeCalcV2FromMinutes } from '@/src/lib/timecalc';
 
 type SortKey = 'year' | 'month' | 'day' | 'siteName';
 
+function normalizeLookupText(value: unknown): string | null {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (Array.isArray(value)) {
+    const [first] = value;
+    if (typeof first === 'string') {
+      const trimmed = first.trim();
+      return trimmed ? trimmed : null;
+    }
+    if (first && typeof first === 'object') {
+      const name = (first as { name?: unknown; value?: unknown }).name ??
+        (first as { name?: unknown; value?: unknown }).value ??
+        String(first);
+      const trimmed = String(name).trim();
+      return trimmed ? trimmed : null;
+    }
+    if (first != null) {
+      const trimmed = String(first).trim();
+      return trimmed ? trimmed : null;
+    }
+    return null;
+  }
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
+}
+
 type DailyAggregate = {
   firstStart?: string;
   firstStartMs?: number;
@@ -18,9 +49,7 @@ function toDayKey(session: SessionReportRow): string | null {
   if (typeof session.date === 'string' && session.date.trim().length > 0) {
     return session.date.trim();
   }
-  const year = session.year;
-  const month = session.month;
-  const day = session.day;
+  const { year, month, day } = session;
   if (!year || !month || !day) {
     return null;
   }
@@ -64,8 +93,9 @@ function buildDailyAggregates(sessions: SessionReportRow[]): Map<string, DailyAg
       entry.totalMinutes += rawDuration;
     }
 
-    if (!entry.clientName && typeof session.clientName === 'string' && session.clientName.trim()) {
-      entry.clientName = session.clientName.trim();
+    const clientName = normalizeLookupText((session as Record<string, unknown>).clientName);
+    if (!entry.clientName && clientName) {
+      entry.clientName = clientName;
     }
 
     aggregates.set(key, entry);
@@ -74,14 +104,17 @@ function buildDailyAggregates(sessions: SessionReportRow[]): Map<string, DailyAg
 }
 
 function formatHoursDecimal(minutes: number): string {
-  const safeMinutes = Number.isFinite(minutes) ? Math.max(0, minutes) : 0;
+  const safeMinutes = Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : 0;
   const hours = safeMinutes / 60;
   return `${hours.toFixed(1)}h`;
 }
 
-function formatOvertime(totalMinutes: number): string {
-  const safeMinutes = Number.isFinite(totalMinutes) ? Math.round(totalMinutes) : 0;
-  const overtimeMinutes = Math.max(0, safeMinutes - 450);
+function formatOvertimeFromSpan(firstStartMs?: number, lastEndMs?: number): string {
+  if (firstStartMs == null || lastEndMs == null || lastEndMs < firstStartMs) {
+    return '0.0h';
+  }
+  const spanMinutes = Math.max(0, Math.round((lastEndMs - firstStartMs) / 60000));
+  const overtimeMinutes = Math.max(0, spanMinutes - 90 - 450);
   return formatHoursDecimal(overtimeMinutes);
 }
 
@@ -137,7 +170,8 @@ function chunkArray<T>(values: T[], size: number): T[][] {
 async function fetchSiteClientNames(sessions: SessionReportRow[]): Promise<Map<string, string>> {
   const siteIds = new Set<string>();
   for (const session of sessions) {
-    if (session.clientName && session.clientName.trim()) {
+    const directClient = normalizeLookupText((session as Record<string, unknown>).clientName);
+    if (directClient) {
       continue;
     }
     if (session.siteRecordId) {
@@ -207,11 +241,14 @@ export async function getReportRowsByUserName(
       const key = toDayKey(session);
       const aggregate = key ? aggregates.get(key) : undefined;
       const siteClientName = session.siteRecordId ? siteClientNames.get(session.siteRecordId) : null;
+      const directClientName = normalizeLookupText((session as Record<string, unknown>).clientName);
       const resolvedClientName =
-        session.clientName?.trim() || aggregate?.clientName || siteClientName || undefined;
-      const totalMinutes = aggregate?.totalMinutes ?? 0;
+        directClientName ?? aggregate?.clientName ?? siteClientName ?? undefined;
       const resolvedStart = aggregate?.firstStart ?? session.start ?? null;
       const resolvedEnd = aggregate?.lastEnd ?? session.end ?? null;
+      const startJst = formatTimestampJst(resolvedStart);
+      const endJst = formatTimestampJst(resolvedEnd);
+      const overtimeHours = formatOvertimeFromSpan(aggregate?.firstStartMs, aggregate?.lastEndMs);
 
       return {
         year: session.year ?? 0,
@@ -220,9 +257,9 @@ export async function getReportRowsByUserName(
         siteName: session.siteName ?? '',
         clientName: resolvedClientName ?? undefined,
         minutes,
-        startJst: formatTimestampJst(resolvedStart),
-        endJst: formatTimestampJst(resolvedEnd),
-        overtimeHours: formatOvertime(totalMinutes),
+        startJst,
+        endJst,
+        overtimeHours,
       } satisfies ReportRow;
     })
     .filter((row) => row.year > 0 && row.month > 0 && row.day > 0);
