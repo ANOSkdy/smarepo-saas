@@ -231,7 +231,11 @@ export default function SiteReportPage() {
         });
       }
 
-      if (sessionRows.length === 0) {
+      const hasMachineInfo = sessionRows.some(
+        (row) => row.machineId != null || (row.machineName != null && row.machineName !== ''),
+      );
+
+      if (!hasMachineInfo) {
         const machineIds = Array.isArray(column.machineIds)
           ? column.machineIds
           : column.machineId != null
