@@ -132,9 +132,11 @@ test('day API returns paired sessions without punches detail', async () => {
       workDescriptions: ['現場点検'],
       note: null,
       machineId: '1001',
+      machineName: '第一号機',
       rawFields: {
         'name (from user)': ['suzuki'],
         'machineId (from machine)': ['1001'],
+        'machineName (from machine)': ['第一号機'],
       },
     },
     {
@@ -150,9 +152,11 @@ test('day API returns paired sessions without punches detail', async () => {
       workDescriptions: ['報告'],
       note: '現地確認',
       machineId: '1001',
+      machineName: '第一号機',
       rawFields: {
         'name (from user)': ['suzuki'],
         'machineId (from machine)': ['1001'],
+        'machineName (from machine)': ['第一号機'],
       },
     },
     {
@@ -167,9 +171,12 @@ test('day API returns paired sessions without punches detail', async () => {
       workType: null,
       workDescriptions: [],
       note: null,
+      machineId: '2002',
+      machineName: '第二号機',
       rawFields: {
         'userName (from user)': ['sato'],
         'machineId (from machine)': ['2002'],
+        'machineName (from machine)': ['第二号機'],
       },
     },
     {
@@ -185,9 +192,11 @@ test('day API returns paired sessions without punches detail', async () => {
       workDescriptions: ['荷卸し'],
       note: null,
       machineId: '2002',
+      machineName: '第二号機',
       rawFields: {
         'userName (from user)': ['sato'],
         'machineId (from machine)': ['2002'],
+        'machineName (from machine)': ['第二号機'],
       },
     },
     {
@@ -203,9 +212,11 @@ test('day API returns paired sessions without punches detail', async () => {
       workDescriptions: ['検査'],
       note: null,
       machineId: '2002',
+      machineName: '第二号機',
       rawFields: {
         'userName (from user)': ['sato'],
         'machineId (from machine)': ['2002'],
+        'machineName (from machine)': ['第二号機'],
       },
     },
     {
@@ -221,9 +232,11 @@ test('day API returns paired sessions without punches detail', async () => {
       workDescriptions: ['後処理'],
       note: null,
       machineId: '1001',
+      machineName: '第一号機',
       rawFields: {
         'name (from user)': ['suzuki'],
         'machineId (from machine)': ['1001'],
+        'machineName (from machine)': ['第一号機'],
       },
     },
   ];
@@ -243,12 +256,14 @@ test('day API returns paired sessions without punches detail', async () => {
   assert.strictEqual(firstSession.hours, 7.5);
   assert.strictEqual(firstSession.status, '正常');
   assert.strictEqual(firstSession.machineId, '1001');
+  assert.strictEqual(firstSession.machineName, '第一号機');
   assert.strictEqual(firstSession.workDescription, '現場点検 / 報告');
   const secondSession = body.sessions[1];
   assert.strictEqual(secondSession.userName, 'sato');
   assert.strictEqual(secondSession.hours, 7);
   assert.strictEqual(secondSession.status, '正常');
   assert.strictEqual(secondSession.machineId, '2002');
+  assert.strictEqual(secondSession.machineName, '第二号機');
   assert.strictEqual(secondSession.workDescription, '荷卸し / 検査');
   const hasClosed = body.sessions.some((session) => session.status === '正常');
   assert.ok(hasClosed, 'closed session should exist');
@@ -262,6 +277,7 @@ test('day API returns paired sessions without punches detail', async () => {
   assert.strictEqual('hours' in openSession, false);
   assert.strictEqual(openSession.clockInAt, '21:00');
   assert.strictEqual(openSession.machineId, '1001');
+  assert.strictEqual(openSession.machineName, '第一号機');
   assert.strictEqual(openSession.workDescription, '後処理');
 });
 
@@ -282,8 +298,10 @@ test('day API returns machineId from lookup field', async () => {
       workType: null,
       note: null,
       machineId: null,
+      machineName: null,
       rawFields: {
         'machineId (from machine)': ['3003'],
+        'machineName (from machine)': ['ホイールローダー'],
         'userName (from user)': ['tanaka'],
       },
     },
@@ -299,8 +317,10 @@ test('day API returns machineId from lookup field', async () => {
       workType: null,
       note: null,
       machineId: null,
+      machineName: null,
       rawFields: {
         'machineId (from machine)': ['3003'],
+        'machineName (from machine)': ['ホイールローダー'],
         'userName (from user)': ['tanaka'],
       },
     },
@@ -313,6 +333,7 @@ test('day API returns machineId from lookup field', async () => {
   assert.ok(Array.isArray(body.sessions));
   assert.strictEqual(body.sessions.length, 1);
   assert.strictEqual(body.sessions[0].machineId, '3003');
+  assert.strictEqual(body.sessions[0].machineName, 'ホイールローダー');
   assert.strictEqual(body.sessions[0].userName, 'tanaka');
 });
 
@@ -331,6 +352,7 @@ test('day API prioritises user name lookup order and falls back to null', async 
       workType: null,
       note: null,
       machineId: null,
+      machineName: null,
       rawFields: {
         'username': ['legacy-lowest'],
         'userName': ['legacy'],
@@ -350,6 +372,7 @@ test('day API prioritises user name lookup order and falls back to null', async 
       workType: null,
       note: null,
       machineId: null,
+      machineName: null,
       rawFields: {
         'username': ['legacy-lowest'],
         'userName': ['legacy'],
@@ -369,6 +392,7 @@ test('day API prioritises user name lookup order and falls back to null', async 
       workType: null,
       note: null,
       machineId: null,
+      machineName: null,
       rawFields: {},
     },
   ];

@@ -105,6 +105,12 @@ export async function GET(req: NextRequest) {
       'machineId (from machine)',
       'machineid (from machine)',
     ] as const;
+    const machineNameLookupCandidates = [
+      'machineName',
+      'machinename',
+      'machineName (from machine)',
+      'machinename (from machine)',
+    ] as const;
 
     const readLookup = (
       fields: Record<string, unknown> | undefined,
@@ -139,12 +145,19 @@ export async function GET(req: NextRequest) {
       const machineId =
         readLookup(startLog?.rawFields, machineLookupCandidates, normalizeMachineId) ??
         readLookup(endLog?.rawFields, machineLookupCandidates, normalizeMachineId) ??
+        session.machineId ??
+        null;
+      const machineName =
+        readLookup(startLog?.rawFields, machineNameLookupCandidates, normalizeLookupText) ??
+        readLookup(endLog?.rawFields, machineNameLookupCandidates, normalizeLookupText) ??
+        session.machineName ??
         null;
 
       return {
         ...session,
         userName,
         machineId,
+        machineName,
       };
     });
 
