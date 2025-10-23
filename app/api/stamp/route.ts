@@ -2,6 +2,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { Record as AirtableRecord } from 'airtable';
 // (intentionally no static import for the worker)
 import { auth } from '@/lib/auth';
 import {
@@ -35,7 +36,10 @@ function isSwitchIntentBody(payload: unknown): payload is SwitchIntentBody {
 }
 
 function normalizeMachineId(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
+  if (value == null) {
+    return '';
+  }
+  return String(value).trim();
 }
 
 function formatDateJST(date: Date): string {
@@ -47,6 +51,37 @@ function formatDateJST(date: Date): string {
   })
     .format(date)
     .replace(/\//g, '-');
+}
+
+type LogRecord = AirtableRecord<LogFields>;
+
+function buildUserFormula(userRecordId: string): string {
+  return `FIND("${userRecordId}", ARRAYJOIN({user})) > 0`;
+}
+
+async function findLatestInLog(userFormula: string): Promise<LogRecord | null> {
+  const records = await withRetry(() =>
+    logsTable
+      .select({
+        filterByFormula: `AND(${userFormula}, {type} = 'IN')`,
+        sort: [{ field: 'timestamp', direction: 'desc' }],
+        maxRecords: 1,
+      })
+      .firstPage(),
+  );
+  return records[0] ?? null;
+}
+
+async function hasOutSince(userFormula: string, timestamp: string): Promise<boolean> {
+  const records = await withRetry(() =>
+    logsTable
+      .select({
+        filterByFormula: `AND(${userFormula}, {type} = 'OUT', {timestamp} >= '${timestamp}')`,
+        maxRecords: 1,
+      })
+      .firstPage(),
+  );
+  return records.length > 0;
 }
 
 async function createOutLogWithFallback(
@@ -94,27 +129,31 @@ async function handleSwitchIntent(
     );
   }
 
-  const userFormula = `FIND("${userRecordId}", ARRAYJOIN({user})) > 0`;
+  const userFormula = buildUserFormula(userRecordId);
 
   try {
-    const latestRecords = await withRetry(() =>
-      logsTable
-        .select({
-          filterByFormula: userFormula,
-          sort: [{ field: 'timestamp', direction: 'desc' }],
-          maxRecords: 1,
-        })
-        .firstPage(),
-    );
-    const latestLog = latestRecords[0];
+    const latestLog = await findLatestInLog(userFormula);
 
-    if (!latestLog || latestLog.fields.type !== 'IN') {
+    if (!latestLog) {
       logger.info('stamp auto-switch skipped: no open IN', {
         userId: userRecordId,
         toMachineId,
       });
       return NextResponse.json(
         { switched: false, reason: 'no-open-in' },
+        { status: 200 },
+      );
+    }
+
+    const inTimestamp =
+      typeof latestLog.fields.timestamp === 'string' ? latestLog.fields.timestamp : '';
+    if (!inTimestamp) {
+      logger.warn('stamp auto-switch skipped: IN log missing timestamp', {
+        userId: userRecordId,
+        inLogId: latestLog.id,
+      });
+      return NextResponse.json(
+        { switched: false, reason: 'in-missing-timestamp' },
         { status: 200 },
       );
     }
@@ -135,8 +174,15 @@ async function handleSwitchIntent(
       );
     }
 
-    const machineRecord = await withRetry(() => machinesTable.find(machineRecordId));
-    const fromMachineId = normalizeMachineId(machineRecord?.fields?.machineid);
+    const lookupMachineId = normalizeMachineId(
+      (latestLog.fields as Record<string, unknown>)['machineId (from machine)'],
+    );
+    let fromMachineId = lookupMachineId;
+
+    if (!fromMachineId) {
+      const machineRecord = await withRetry(() => machinesTable.find(machineRecordId));
+      fromMachineId = normalizeMachineId(machineRecord?.fields?.machineid);
+    }
 
     if (!fromMachineId) {
       logger.warn('stamp auto-switch skipped: machineId missing on linked machine', {
@@ -160,16 +206,9 @@ async function handleSwitchIntent(
       );
     }
 
-    const existingOuts = await withRetry(() =>
-      logsTable
-        .select({
-          filterByFormula: `AND(${userFormula}, {type} = 'OUT', {timestamp} >= '${latestLog.fields.timestamp}')`,
-          maxRecords: 1,
-        })
-        .firstPage(),
-    );
+    const alreadyClosed = await hasOutSince(userFormula, inTimestamp);
 
-    if (existingOuts.length > 0) {
+    if (alreadyClosed) {
       logger.info('stamp auto-switch skipped: already closed after IN', {
         userId: userRecordId,
         fromMachineId,
@@ -181,16 +220,7 @@ async function handleSwitchIntent(
       );
     }
 
-    const currentLatestRecords = await withRetry(() =>
-      logsTable
-        .select({
-          filterByFormula: userFormula,
-          sort: [{ field: 'timestamp', direction: 'desc' }],
-          maxRecords: 1,
-        })
-        .firstPage(),
-    );
-    const currentLatest = currentLatestRecords[0];
+    const currentLatest = await findLatestInLog(userFormula);
 
     if (!currentLatest || currentLatest.id !== latestLog.id) {
       logger.info('stamp auto-switch skipped: IN log replaced before switch', {
@@ -224,7 +254,7 @@ async function handleSwitchIntent(
       timestamp,
       date,
       user: userLinks,
-      machine: machineLinks as readonly string[],
+      machine: machineLinks,
       siteName,
       workDescription,
       autoGenerated: true,
@@ -293,12 +323,132 @@ export async function POST(req: NextRequest) {
   } = parsed.data;
 
   try {
-    const machineRecords = await machinesTable
-      .select({
-        filterByFormula: `{machineid} = '${machineId}'`,
-        maxRecords: 1,
-      })
-      .firstPage();
+    if (type === 'OUT') {
+      const userRecordId = session.user.id;
+      const userFormula = buildUserFormula(userRecordId);
+      const latestIn = await findLatestInLog(userFormula);
+
+      if (!latestIn) {
+        return errorResponse(
+          'NO_OPEN_IN',
+          'No active IN log found',
+          'Refresh the page and retry',
+          400,
+        );
+      }
+
+      const inTimestamp =
+        typeof latestIn.fields.timestamp === 'string' ? latestIn.fields.timestamp : '';
+      if (!inTimestamp) {
+        return errorResponse(
+          'IN_MISSING_TIMESTAMP',
+          'Active IN log is missing timestamp',
+          'Contact administrator',
+          500,
+        );
+      }
+
+      const alreadyClosed = await hasOutSince(userFormula, inTimestamp);
+      if (alreadyClosed) {
+        return errorResponse(
+          'ALREADY_CLOSED',
+          'The IN log has already been closed',
+          'Reload and confirm status',
+          409,
+        );
+      }
+
+      const currentLatest = await findLatestInLog(userFormula);
+      if (!currentLatest || currentLatest.id !== latestIn.id) {
+        return errorResponse(
+          'IN_CHANGED',
+          'A newer IN log was created',
+          'Reload and retry',
+          409,
+        );
+      }
+
+      const machineLinks = Array.isArray(latestIn.fields.machine)
+        ? [...latestIn.fields.machine]
+        : [];
+      if (machineLinks.length === 0) {
+        return errorResponse(
+          'IN_MISSING_MACHINE',
+          'Active IN log is missing machine link',
+          'Contact administrator',
+          500,
+        );
+      }
+
+      const userLinks =
+        Array.isArray(latestIn.fields.user) && latestIn.fields.user.length > 0
+          ? [...latestIn.fields.user]
+          : [userRecordId];
+      const siteNameFromIn =
+        typeof latestIn.fields.siteName === 'string' ? latestIn.fields.siteName : undefined;
+      const workDescriptionFromIn =
+        typeof latestIn.fields.workDescription === 'string'
+          ? latestIn.fields.workDescription
+          : undefined;
+      const clientNameFromIn =
+        typeof (latestIn.fields as Record<string, unknown>).clientName === 'string'
+          ? String((latestIn.fields as Record<string, unknown>).clientName)
+          : undefined;
+
+      const now = new Date();
+      const timestamp = now.toISOString();
+      const dateJST = formatDateJST(now);
+      const accuracyValue = typeof accuracy === 'number' ? accuracy : undefined;
+
+      const candidate = filterFields(
+        {
+          type: 'OUT',
+          timestamp,
+          date: dateJST,
+          user: userLinks,
+          machine: machineLinks,
+          siteName: siteNameFromIn,
+          workDescription: workDescriptionFromIn,
+          clientName: clientNameFromIn,
+          lat,
+          lon,
+          accuracy: accuracyValue,
+        },
+        LOGS_ALLOWED_FIELDS,
+      ) as Partial<LogFields>;
+
+      const createdRecords = await withRetry(() =>
+        logsTable.create([{ fields: candidate }], { typecast: true }),
+      );
+      const created = createdRecords[0];
+
+      if (created) {
+        logger.info('stamp manual OUT created', {
+          userId: session.user.id,
+          recordId: created.id,
+        });
+      }
+
+      return NextResponse.json(
+        {
+          decidedSiteId: null,
+          decidedSiteName: siteNameFromIn ?? null,
+          decision_method: 'inherit',
+          nearest_distance_m: null,
+          accuracy: typeof accuracy === 'number' ? accuracy : null,
+        },
+        { status: 200 },
+      );
+    }
+
+    const machineRecords = await withRetry(() =>
+      machinesTable
+        .select({
+          filterByFormula: `{machineid} = '${machineId}'`,
+          maxRecords: 1,
+        })
+        .firstPage(),
+    );
 
     if (machineRecords.length === 0 || !machineRecords[0].fields.active) {
       return errorResponse(
@@ -320,12 +470,7 @@ export async function POST(req: NextRequest) {
 
     const now = new Date();
     const timestamp = now.toISOString();
-    const dateJST = new Intl.DateTimeFormat('ja-JP', {
-      timeZone: 'Asia/Tokyo',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(now).replace(/\//g, '-');
+    const dateJST = formatDateJST(now);
 
     const candidate = {
       timestamp,

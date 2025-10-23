@@ -330,8 +330,23 @@ export default function StampCard({
           payload !== null &&
           'switched' in payload &&
           (payload as { switched?: unknown }).switched === true;
+        const reason =
+          typeof payload === 'object' &&
+          payload !== null &&
+          'reason' in payload &&
+          (payload as { reason?: unknown }).reason != null
+            ? String((payload as { reason?: unknown }).reason)
+            : undefined;
         if (response.ok && switched) {
+          setStampType('IN');
+          setSelectedWork('');
+          setLastWorkDescription('');
           router.refresh();
+        } else {
+          console.warn('[StampCard] auto-switch skipped', {
+            status: response.status,
+            reason: reason ?? 'unknown',
+          });
         }
       } catch {
         // ネットワークエラー時は既存の退勤UIにフォールバック
