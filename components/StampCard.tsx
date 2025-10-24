@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SiteFields, WorkTypeFields } from '@/types';
 import { Record } from 'airtable';
@@ -58,6 +58,7 @@ const VERY_BAD_ACC = 300;
 const VERY_OLD_MS = 15000;
 const GEO_TIMEOUT_MS = 10000;
 const LAST_POSITION_STORAGE_KEY = 'smarepo:lastPosition';
+const LAST_MACHINE_STORAGE_KEY = 'smarepo:lastMachineId';
 
 const readStoredPosition = (): StoredPosition | null => {
   if (typeof window === 'undefined') return null;
@@ -95,6 +96,30 @@ const writeStoredPosition = (position: Fix) => {
     window.localStorage.setItem(LAST_POSITION_STORAGE_KEY, JSON.stringify(payload));
   } catch (error) {
     console.warn('[GeolocationStorage] failed to write', error);
+  }
+};
+
+const readLastMachineId = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = window.localStorage.getItem(LAST_MACHINE_STORAGE_KEY);
+    return typeof value === 'string' && value.trim().length > 0 ? value : null;
+  } catch (error) {
+    console.warn('[LastMachineStorage] failed to read', error);
+    return null;
+  }
+};
+
+const writeLastMachineId = (machineId: string | null) => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (machineId && machineId.trim().length > 0) {
+      window.localStorage.setItem(LAST_MACHINE_STORAGE_KEY, machineId.trim());
+    } else {
+      window.localStorage.removeItem(LAST_MACHINE_STORAGE_KEY);
+    }
+  } catch (error) {
+    console.warn('[LastMachineStorage] failed to write', error);
   }
 };
 
@@ -274,6 +299,7 @@ export default function StampCard({
   const [selectedWork, setSelectedWork] = useState('');
   const [locationError, setLocationError] = useState<LocationError | null>(null);
   const [pendingStamp, setPendingStamp] = useState<{ type: 'IN' | 'OUT'; workDescription: string } | null>(null);
+  const hasPromptedSwitchRef = useRef(false);
 
   const searchParams = useSearchParams();
   const machineId = searchParams.get('machineId') ?? searchParams.get('machineid');
@@ -300,89 +326,113 @@ export default function StampCard({
       .catch(() => setError('拠点マスタの取得に失敗しました。'));
   }, []);
 
-  const handleStamp = async (type: 'IN' | 'OUT', workDescription: string) => {
-    setIsLoading(true);
-    setError('');
-    setWarning('');
-    setLocationError(null);
-    setPendingStamp({ type, workDescription });
-
-    try {
-      const position = await getBestPositionAdaptive((lat, lon) => {
-        try {
-          return sites.some((site) => {
-            const geom = extractGeometry(site.fields.polygon_geojson ?? null);
-            return geom ? pointInGeometry(lat, lon, geom) : false;
-          });
-        } catch {
-          return false;
-        }
-      });
-
-      const { latitude, longitude, accuracy } = position.coords;
-      const positionTimestamp = position.timestamp;
-      const ageMs = Date.now() - positionTimestamp;
-      const warnings: string[] = [];
-      if (ageMs > 10_000) {
-        warnings.push('位置情報が古い可能性があります（>10秒）');
+  const handleStamp = useCallback(
+    async (
+      type: 'IN' | 'OUT',
+      workDescription: string,
+      options?: { machineIdOverride?: string | null; nextStampState?: 'IN' | 'OUT' | 'COMPLETED' },
+    ): Promise<boolean> => {
+      const effectiveMachineId = (options?.machineIdOverride ?? machineId)?.trim();
+      if (!effectiveMachineId) {
+        setError('機械IDを特定できませんでした。');
+        return false;
       }
-      if (position.source === 'cache') {
-        warnings.push('最新の位置情報を取得できなかったため、最後に保存した位置情報を使用しました。');
-      }
-      const decidedSite = findNearestSite(latitude, longitude, sites);
+
+      setIsLoading(true);
+      setError('');
+      setWarning('');
+      setLocationError(null);
+      setPendingStamp({ type, workDescription });
+
+      let succeeded = false;
 
       try {
-        const response = await fetch('/api/stamp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            machineId,
-            workDescription,
-            lat: latitude,
-            lon: longitude,
-            accuracy: typeof accuracy === 'number' ? accuracy : null,
-            type,
-            positionTimestamp,
-            clientDecision: 'auto',
-            siteId: decidedSite?.fields.siteId,
-          }),
+        const position = await getBestPositionAdaptive((lat, lon) => {
+          try {
+            return sites.some((site) => {
+              const geom = extractGeometry(site.fields.polygon_geojson ?? null);
+              return geom ? pointInGeometry(lat, lon, geom) : false;
+            });
+          } catch {
+            return false;
+          }
         });
-        const data = await response.json();
-        const combinedWarnings: string[] = warnings.slice();
-        if (typeof data.accuracy === 'number' && data.accuracy > 100) {
-          combinedWarnings.push('位置精度が低い可能性があります（>100m）');
+
+        const { latitude, longitude, accuracy } = position.coords;
+        const positionTimestamp = position.timestamp;
+        const ageMs = Date.now() - positionTimestamp;
+        const warnings: string[] = [];
+        if (ageMs > 10_000) {
+          warnings.push('位置情報が古い可能性があります（>10秒）');
         }
-        if (
-          typeof data.nearest_distance_m === 'number' &&
-          data.nearest_distance_m > 1000
-        ) {
-          combinedWarnings.push('録拠点から離れている可能性があります（>1km）');
+        if (position.source === 'cache') {
+          warnings.push('最新の位置情報を取得できなかったため、最後に保存した位置情報を使用しました。');
         }
-        setWarning(combinedWarnings.join(' / '));
-        if (!response.ok) {
-          throw new Error(data.message || `サーバーエラー: ${response.statusText}`);
+        const decidedSite = findNearestSite(latitude, longitude, sites);
+
+        try {
+          const response = await fetch('/api/stamp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              machineId: effectiveMachineId,
+              workDescription,
+              lat: latitude,
+              lon: longitude,
+              accuracy: typeof accuracy === 'number' ? accuracy : null,
+              type,
+              positionTimestamp,
+              clientDecision: 'auto',
+              siteId: decidedSite?.fields.siteId,
+            }),
+          });
+          const data = await response.json();
+          const combinedWarnings: string[] = warnings.slice();
+          if (typeof data.accuracy === 'number' && data.accuracy > 100) {
+            combinedWarnings.push('位置精度が低い可能性があります（>100m）');
+          }
+          if (
+            typeof data.nearest_distance_m === 'number' &&
+            data.nearest_distance_m > 1000
+          ) {
+            combinedWarnings.push('録拠点から離れている可能性があります（>1km）');
+          }
+          setWarning(combinedWarnings.join(' / '));
+          if (!response.ok) {
+            throw new Error(data.message || `サーバーエラー: ${response.statusText}`);
+          }
+          if (type === 'IN') {
+            setStampType('OUT');
+            setLastWorkDescription(workDescription);
+            writeLastMachineId(effectiveMachineId);
+          } else {
+            const nextState = options?.nextStampState ?? 'COMPLETED';
+            setStampType(nextState);
+            if (nextState === 'IN') {
+              setLastWorkDescription('');
+              setSelectedWork('');
+            }
+            writeLastMachineId(null);
+          }
+          succeeded = true;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : '通信に失敗しました。';
+          setError(message);
+        } finally {
+          setPendingStamp(null);
         }
-        if (type === 'IN') {
-          setStampType('OUT');
-          setLastWorkDescription(workDescription);
-        } else {
-          setStampType('COMPLETED');
-        }
-        setPendingStamp(null);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : '通信に失敗しました。';
-        setError(message);
-        setPendingStamp(null);
+      } catch (geoError) {
+        const normalized = normalizeToLocationError(geoError);
+        console.error('[GeolocationError]', geoError);
+        setLocationError(normalized);
       } finally {
         setIsLoading(false);
       }
-    } catch (geoError) {
-      const normalized = normalizeToLocationError(geoError);
-      console.error('[GeolocationError]', geoError);
-      setLocationError(normalized);
-      setIsLoading(false);
-    }
-  };
+
+      return succeeded;
+    },
+    [machineId, sites],
+  );
 
   const handleRetryLocation = () => {
     if (!pendingStamp) {
@@ -405,6 +455,43 @@ export default function StampCard({
     }
     handleStamp('OUT', lastWorkDescription);
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (hasPromptedSwitchRef.current) return;
+    if (initialStampType !== 'OUT') return;
+    if (stampType !== 'OUT') return;
+
+    const previousMachineId = readLastMachineId();
+    const currentMachineId = machineId?.trim() ?? null;
+    if (!previousMachineId || !currentMachineId) return;
+    if (previousMachineId === currentMachineId) return;
+
+    hasPromptedSwitchRef.current = true;
+
+    if (!lastWorkDescription) {
+      alert('前回の作業内容が見つかりません。');
+      return;
+    }
+
+    const confirmed = window.confirm('別の機械で出勤中です。退勤して新しい機械に切り替えますか？');
+    if (!confirmed) {
+      return;
+    }
+
+    void (async () => {
+      const success = await handleStamp('OUT', lastWorkDescription, {
+        machineIdOverride: previousMachineId,
+        nextStampState: 'IN',
+      });
+      if (success) {
+        setWarning('');
+        setError('');
+        setLocationError(null);
+        router.replace(`/nfc?machineId=${encodeURIComponent(currentMachineId)}`);
+      }
+    })();
+  }, [handleStamp, initialStampType, lastWorkDescription, machineId, router, stampType]);
 
   if (isLoading) {
     return <CardState title="処理中" message="サーバーと通信しています。" role="status" />;
