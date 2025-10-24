@@ -233,7 +233,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
                     現場名
                   </th>
                   <th scope="col" className="px-4 py-3 text-left font-semibold">
-                    元請代理人
+                    元請・代理人
                   </th>
                   <th scope="col" className="px-4 py-3 text-left font-semibold">
                     始業時間
@@ -266,7 +266,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Sea
                       <td className="px-4 py-3">{row.month}</td>
                       <td className="px-4 py-3">{row.day}</td>
                       <td className="px-4 py-3">{row.siteName}</td>
-                      <td className="px-4 py-3">{row.clientName ?? ''}</td>
+                      <td className="px-4 py-3">{row.clientName ?? '-'}</td>
                       <td className="px-4 py-3">{row.startJst ?? ''}</td>
                       <td className="px-4 py-3">{row.endJst ?? ''}</td>
                       <td className="px-4 py-3">{formatWorkingHours(row.minutes)}</td>

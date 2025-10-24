@@ -39,10 +39,38 @@ function getFieldValue<T = unknown>(fields: SessionFields, fieldName: string): T
   return undefined;
 }
 
+function extractLookupText(value: unknown): string | null {
+  const direct = asString(value);
+  if (direct) {
+    return direct;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const candidate = extractLookupText(entry);
+      if (candidate) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+  if (value && typeof value === 'object') {
+    const source =
+      (value as { name?: unknown }).name ??
+      (value as { value?: unknown }).value ??
+      (value as { text?: unknown }).text ??
+      (value as { label?: unknown }).label ??
+      null;
+    if (source != null) {
+      return extractLookupText(source);
+    }
+  }
+  return null;
+}
+
 function pickFirstString(fields: SessionFields, fieldNames: string[]): string | null {
   for (const fieldName of fieldNames) {
     const value = getFieldValue(fields, fieldName);
-    const str = asString(value);
+    const str = extractLookupText(value);
     if (str) {
       return str;
     }
